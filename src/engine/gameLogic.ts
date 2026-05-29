@@ -1048,6 +1048,79 @@ export const declareAttack = (st: GameState, attackerId: string, targetId: strin
   return true;
 };
 
+// Resolve Area Effect splash damage to other opposing units
+export const resolveAreaEffectSplash = (state: GameState, pending: ShieldDecisionContext) => {
+  const planetIndex = state.combat.activePlanetIndex;
+  if (planetIndex === -1 || planetIndex === undefined) return;
+
+  const planet = state.planets[planetIndex];
+  const units = getUnitsAtPlanet(state, planet.id);
+
+  // Find the attacker
+  const attacker = units.find(u => u.instanceId === pending.attackerId) || 
+                   Object.values(state.players).flatMap(p => p.hq).find(u => u.instanceId === pending.attackerId);
+  if (!attacker) return;
+
+  // Check if Eldar Zen 'Xi' Aonia is present and nullifies Area Effect for enemy units
+  const zensPresent = units.some(u => 
+    u.controllerId !== attacker.controllerId && 
+    u.type === 'Warlord' && 
+    u.description?.includes("Each enemy unit at this planet loses the Area Effect keyword")
+  );
+  if (zensPresent) {
+    addLog(state, `⛔ Zen 'Xi' Aonia suppresses enemy Area Effect keyword at this planet!`, attacker.controllerId);
+    return;
+  }
+
+  // Find if attacker has Area Effect keyword
+  let areaEffectValue = 0;
+  for (const kw of attacker.keywords || []) {
+    const m = kw.match(/Area\s+Effect\s*\((\d+)\)/i);
+    if (m) {
+      areaEffectValue = parseInt(m[1], 10);
+      break;
+    }
+  }
+
+  if (areaEffectValue <= 0) return;
+
+  addLog(state, `💥 Area Effect (${areaEffectValue}) triggered by ${attacker.name}! Resolving splash damage...`, attacker.controllerId);
+
+  // Find target player to check for global/local reductions
+  const opponentId = attacker.controllerId === 'player-1' ? 'ai-1' : 'player-1';
+  const opponent = state.players[opponentId];
+
+  // Tyranid Support: "Reduce damage dealt by Area Effect to 1."
+  const hasTyranidSupportReduction = opponent.hq.some(s => s.description?.includes("Reduce damage dealt by Area Effect to 1"));
+  if (hasTyranidSupportReduction) {
+    areaEffectValue = 1;
+    addLog(state, `🛡️ Tyranid support reduces Area Effect damage to 1!`);
+  }
+
+  // Get opposing units that are NOT the main target of the attack
+  const opposingUnits = units.filter(u => 
+    u.controllerId === opponentId && 
+    u.instanceId !== pending.targetId
+  );
+
+  opposingUnits.forEach(u => {
+    // Check if immune to Area Effect
+    const isImmune = u.description?.includes("Cannot be damaged by Area Effect") || 
+                     units.some(other => 
+                       other.controllerId === opponentId && 
+                       other.instanceId !== u.instanceId && 
+                       other.description?.includes("Each other unit you control at this planet cannot be damaged by Area Effect")
+                     );
+
+    if (isImmune) {
+      addLog(state, `🛡️ ${u.name} is immune to Area Effect damage.`);
+    } else {
+      applyDamageToUnit(state, u, areaEffectValue);
+      addLog(state, `💥 Splash! ${u.name} takes ${areaEffectValue} Area Effect damage. (${u.damage}/${u.hp} Wounds)`);
+    }
+  });
+};
+
 // Apply pending damage without shield
 export const applyPendingDamageNoShield = (state: GameState) => {
   const pending = state.combat.pendingDamage;
@@ -1061,6 +1134,9 @@ export const applyPendingDamageNoShield = (state: GameState) => {
     applyDamageToUnit(state, target, pending.damageAmount);
     addLog(state, `💥 Attack resolved! ${target.name} takes ${pending.damageAmount} Damage. Damage is now ${target.damage}/${target.hp}.`);
   }
+
+  // Resolve Area Effect splash damage before clearing pending damage
+  resolveAreaEffectSplash(state, pending);
 
   state.combat.pendingDamage = undefined;
   
@@ -1100,6 +1176,9 @@ export const resolveShieldCard = (state: GameState, playerId: string, shieldCard
       addLog(state, `🛡️ Player discarded ${shieldCard.name} to shield ${absorbValue} damage! Net damage taken: ${netDamage}.`);
     }
   }
+
+  // Resolve Area Effect splash damage before clearing pending damage
+  resolveAreaEffectSplash(state, pending);
 
   state.combat.pendingDamage = undefined;
   advanceCombatSequence(state);

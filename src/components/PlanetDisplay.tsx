@@ -35,15 +35,15 @@ const NAZDREG_CARD = {
   conquestCardId: '01053'
 };
 
-import atroxPrimeImg from './card-images/planets/Atrox_Prime.jpg';
-import barlusImg from './card-images/planets/Barlus.jpg';
-import carnathImg from './card-images/planets/Carnath.jpg';
-import elouithImg from './card-images/planets/Elouith.jpg';
-import ferrinImg from './card-images/planets/Ferrin.jpg';
-import iridialImg from './card-images/planets/Iridial.jpg';
-import osusIvImg from './card-images/planets/Osus_IV.jpg';
-import tarrusImg from './card-images/planets/Tarrus.jpg';
-import yvarnImg from "./card-images/planets/Y'varn.jpg";
+import atroxPrimeImg from './card-images/CardImages/Atrox_Prime.jpg';
+import barlusImg from './card-images/CardImages/Barlus.jpg';
+import carnathImg from './card-images/CardImages/Carnath.jpg';
+import elouithImg from './card-images/CardImages/Elouith.jpg';
+import ferrinImg from './card-images/CardImages/Ferrin.jpg';
+import iridialImg from './card-images/CardImages/Iridial.jpg';
+import osusIvImg from './card-images/CardImages/Osus_IV.jpg';
+import tarrusImg from './card-images/CardImages/Tarrus.jpg';
+import yvarnImg from "./card-images/CardImages/Y'varn.jpg";
 
 const LOCAL_PLANET_IMAGES: Record<string, string> = {
   'Atrox Prime': atroxPrimeImg,

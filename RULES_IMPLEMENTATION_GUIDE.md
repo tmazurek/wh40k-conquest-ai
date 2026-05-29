@@ -8,7 +8,7 @@ Here is the prioritized list of engine and rules gaps to implement next:
 
 ### 🔴 High Priority
 - **Programmatic Keywords**:
-  - **`Area Effect (X)`**: Implement splash-damage allocation during combat strikes in the battle resolution loop.
+  - **`Area Effect (X)`**: ✅ Fully implemented in combat resolution.
   - **`Mobile`**: Allow eligible units to shift adjacent to other planets at the start of the combat phase.
 - **AI Upgrades**: Teach the Heuristic AI to compute value for Area Effect placement and Mobile maneuvers.
 
@@ -581,6 +581,7 @@ Default threshold = **3** (config `planets_to_win`).
 | **Ranged** | May attack during **ranged** combat step only |
 | **Brutal** | `ATK += current_wounds` when attacking |
 | **Nazdreg aura** | Other friendly units at his planet gain Brutal (not Nazdreg himself from aura) |
+| **Area Effect (X)** | When a unit with Area Effect (X) attacks, the main defender may shield normally. All other opposing units at the planet immediately take X splash damage. |
 | **command_bonus_resources** | +N resources when winning command at planet |
 | **command_bonus_cards** | +N card draws when winning command at planet |
 | **shields** (numeric on card) | Card can be discarded in shield window to absorb 1 damage |
@@ -791,7 +792,7 @@ def combat_phase(state):
 | Planet battle abilities | ❌ text only |
 | Full interrupt/reaction priority system | ❌ simplified triggers |
 | Events with real effects | ✅ (Major SM/Ork/Astra events active) |
-| Area Effect, Mobile, Armorbane | ⚠️ (Armorbane active; others text only) |
+| Area Effect, Mobile, Armorbane | ⚠️ (Area Effect and Armorbane active; Mobile text only) |
 | Card Database & Factions | ✅ (1,100+ cards accurate to CSV across 10 factions) |
 | Full Conquest resource ready/exhaust | ❌ count-based only |
 | Multiplayer | ❌ |
