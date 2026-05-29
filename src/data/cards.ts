@@ -32,8 +32,8 @@ export const DECK_SM = [
   'sm-chosen', 'sm-chosen', 'sm-chosen', 'sm-chosen',
 
   // Army (22 cards)
-  'sm-10thscout', 'sm-landspeedervengeance',
-  'sm-cardinis', 'sm-cardinis', 'sm-salamanderflamersquad',
+  'sm-10thscout', 'sm-10thscout',
+  'sm-cardinis', 'sm-cardinis', 'sm-cardinis',
   'sm-librarian', 'sm-librarian', 'sm-librarian',
   'sm-bloodangels', 'sm-bloodangels',
   'sm-dreadnought', 'sm-dreadnought',
