@@ -310,6 +310,80 @@ export default function App() {
         {/* GAME PLAYFIELD: 9 cols broad */}
         <div className="col-span-12 xl:col-span-9 space-y-6">
 
+          {/* ORK AI DASHBOARD (TOP TIER) */}
+          <div className="bg-red-950/15 border border-red-900/20 rounded-2xl p-4 space-y-3 shadow-lg relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-red-900/5 via-transparent to-transparent pointer-events-none" />
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-red-900/15 pb-2 relative z-10">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                <h3 className="font-mono text-red-400 font-bold uppercase tracking-widest text-[10px] flex items-center gap-1.5">
+                  🤖 ORK AI COMMANDER BOARD
+                </h3>
+              </div>
+              <div className="flex items-center gap-3 font-mono text-[9px]">
+                <div className="bg-black/40 border border-red-900/15 px-2 py-0.5 rounded flex items-center gap-1.5">
+                  <Coins className="w-3 h-3 text-red-500" />
+                  <span>Resources: <strong className="text-red-400 font-bold">{ai.resources}</strong></span>
+                </div>
+                <div className="bg-black/40 border border-red-900/15 px-2 py-0.5 rounded">
+                  <span>Deck: <strong className="text-gray-300 font-bold">{ai.deck.length}</strong></span>
+                </div>
+                <div className="bg-black/40 border border-red-900/15 px-2 py-0.5 rounded">
+                  <span>Discard: <strong className="text-gray-450 font-bold">{ai.discard.length}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 relative z-10">
+              {/* ORK AI HAND (CARD BACKS) */}
+              <div className="md:col-span-6 space-y-2">
+                <span className="text-[9px] text-red-550 font-mono tracking-widest block uppercase font-bold">
+                  🃏 INTEL HAND ({ai.hand.length} Cards)
+                </span>
+                <div className="flex gap-2 overflow-x-auto pb-1 max-w-full">
+                  {ai.hand.length === 0 ? (
+                    <div className="text-[9px] text-gray-500 italic py-3 font-mono">Hand is empty</div>
+                  ) : (
+                    ai.hand.map((_, index) => (
+                      <div 
+                        key={index}
+                        className="w-11 h-16 rounded-lg bg-gradient-to-br from-[#7f1d1d] to-[#450a0a] border border-[#ef4444]/30 shadow-md relative overflow-hidden shrink-0 flex items-center justify-center select-none"
+                      >
+                        <div className="absolute inset-1 rounded border border-[#ef4444]/10 flex flex-col items-center justify-center">
+                          <Swords className="w-4 h-4 text-[#ef4444]/20 rotate-45" />
+                          <span className="text-[6px] text-[#ef4444]/35 font-mono font-bold tracking-widest mt-1">ORK</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* ORK AI GARRISON (HQ & SUPPORTS) */}
+              <div className="md:col-span-6 space-y-2">
+                <span className="text-[9px] text-red-555 font-mono tracking-widest block uppercase font-bold">
+                  🏗️ HQ & SUPPORT ARRAY ({ai.hq.length} Cards)
+                </span>
+                <div className="flex gap-2 overflow-x-auto pb-1 max-w-full items-center">
+                  {ai.hq.length === 0 ? (
+                    <div className="text-[9px] text-gray-500 italic py-3 font-mono">HQ is empty</div>
+                  ) : (
+                    ai.hq.map(c => (
+                      <div key={c.instanceId} className="shrink-0 scale-90 origin-top">
+                        <CardDisplay
+                          size="mini"
+                          card={c}
+                          canPlay={false}
+                          onClick={() => {}}
+                        />
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* STEP-BY-STEP PHASE TRANSITION PANEL */}
           {!gameState.isGameOver && (
             <div className="w-full space-y-3">
