@@ -1,4 +1,4 @@
-export type Faction = 'Space Marines' | 'Orks' | 'Neutral';
+export type Faction = 'Space Marines' | 'Orks' | 'Neutral' | 'Tau' | 'Chaos' | 'Astra Militarum' | 'Dark Eldar' | 'Eldar' | 'Necron' | 'Tyranid';
 export type CardType = 'Warlord' | 'Army' | 'Attachment' | 'Event' | 'Support';
 export type Phase = 'DEPLOY' | 'COMMAND' | 'COMBAT' | 'HQ';
 export type CombatSubPhase = 'NONE' | 'RANGED' | 'MELEE' | 'RETREAT' | 'SHIELD_PROMPT';
@@ -88,11 +88,11 @@ export interface GameState {
   isGameOver: boolean;
   winner?: string;
   combat: CombatState;
-  
+
   // Warlord commitments (secret until revealed)
   warlordCommitments: Record<string, number | null>; // playerId -> planetIndex
   warlordCommitmentsRevealed: boolean;
-  
+
   // Deployment Consecutive passes
   deployPassCount: number;
   playersPassedDeploy: Record<string, boolean>;
