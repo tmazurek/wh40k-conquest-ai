@@ -1,0 +1,6 @@
+{
+  "name": "Warhammer 40k Conquest AI Trainer",
+  "description": "An interactive browser-based single-player rules engine and tactical AI opponent for the Warhammer 40,000: Conquest LCG.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
