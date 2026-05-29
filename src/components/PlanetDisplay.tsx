@@ -96,6 +96,12 @@ export default function PlanetDisplay({
   const [viewMode, setViewMode] = useState<'image' | 'text'>('image');
   const [imageError, setImageError] = useState(false);
 
+  const aiWarlordInstance = gameState.players['ai-1'].hq.find(u => u.type === 'Warlord');
+  const aiWarlordHp = aiWarlordInstance ? aiWarlordInstance.hp - aiWarlordInstance.damage : 6;
+
+  const p1WarlordInstance = gameState.players['player-1'].hq.find(u => u.type === 'Warlord');
+  const p1WarlordHp = p1WarlordInstance ? p1WarlordInstance.hp - p1WarlordInstance.damage : 6;
+
   useEffect(() => {
     setImageError(false);
   }, [planet.id]);
@@ -187,17 +193,26 @@ export default function PlanetDisplay({
   return (
     <>
       <div className="flex flex-col items-center space-y-2 shrink-0 min-w-[215px] max-w-[230px]">
-      
-      {/* 2. TOP FORCES PANEL (ORK AI FORCES) */}
-      <div className="flex flex-wrap justify-center gap-1 min-h-[45px] w-full bg-red-950/10 border border-red-900/10 rounded-xl p-1 items-center">
+            {/* 2. TOP FORCES PANEL (ORK AI FORCES) */}
+      <div className="flex flex-wrap justify-center gap-1.5 min-h-[45px] w-full bg-red-950/10 border border-red-900/10 rounded-xl p-1.5 items-center">
         {hasAiWarlord && (
           <div 
             onMouseEnter={() => handleUnitMouseEnter(NAZDREG_CARD)}
             onMouseLeave={handleUnitMouseLeave}
             onMouseMove={handleUnitMouseMove}
-            className="flex items-center gap-1 px-1.5 py-0.5 bg-gradient-to-r from-red-950/70 to-red-900/40 border border-red-900/50 rounded-lg text-[9px] shadow-sm animate-pulse-slow cursor-pointer text-red-400 font-bold"
+            onClick={() => {
+              if (aiWarlordInstance && selectedAttackerId && isUnderConflict) {
+                handleDeclareAttackTarget(aiWarlordInstance.instanceId);
+              }
+            }}
+            className={`flex items-center gap-1 px-1.5 py-0.5 bg-gradient-to-r from-red-950/70 to-red-900/40 border border-red-900/50 rounded-lg text-[9px] shadow-sm animate-pulse-slow cursor-pointer text-red-400 font-bold shrink-0 transition-all ${
+              selectedAttackerId ? 'ring-1 ring-red-500 animate-pulse bg-red-950/20' : ''
+            } ${aiWarlordInstance && aiWarlordInstance.isExhausted ? 'opacity-35 cursor-not-allowed' : ''}`}
           >
-            🪓 Nazdreg (W)
+            👑 Nazdreg (W)
+            <span className="text-red-400 font-bold font-mono text-[8.5px] ml-1 flex items-center">⚔️2</span>
+            <span className="text-green-400 font-bold font-mono text-[8.5px] flex items-center">❤️{aiWarlordHp}</span>
+            <span className="text-cyan-400 font-bold font-mono text-[8.5px] flex items-center">🔨2</span>
           </div>
         )}
 
@@ -213,13 +228,17 @@ export default function PlanetDisplay({
                 handleDeclareAttackTarget(u.instanceId);
               }
             }}
-            className={`flex items-center gap-1 px-1.5 py-0.5 bg-red-950/40 border border-red-900/30 rounded-lg text-[9px] text-gray-300 font-sans cursor-pointer hover:bg-red-900/50 transition-all ${
+            className={`flex items-center gap-1 px-1.5 py-0.5 bg-red-950/40 border border-red-900/30 rounded-lg text-[9px] text-gray-300 font-sans cursor-pointer hover:bg-red-900/50 transition-all shrink-0 ${
               selectedAttackerId ? 'ring-1 ring-red-500 animate-pulse bg-red-950/20' : ''
             }`}
             title={`${u.name}: Click to elect as target`}
           >
-            <span className="truncate max-w-[80px]">{u.name.split(' ').slice(-1)}</span>
-            <span className="text-red-400 font-bold font-mono text-[8px]">{u.hp - u.damage}❤️</span>
+            <span className="truncate max-w-[50px] font-medium">{u.name.split(' ').slice(-1)}</span>
+            <span className="text-red-400 font-bold font-mono text-[8.5px] flex items-center">⚔️{u.attack}</span>
+            <span className="text-green-400 font-bold font-mono text-[8.5px] flex items-center">❤️{u.hp - u.damage}</span>
+            {u.commandIcons > 0 && (
+              <span className="text-cyan-400 font-bold font-mono text-[8.5px] flex items-center">🔨{u.commandIcons}</span>
+            )}
           </div>
         ))}
 
@@ -362,15 +381,31 @@ export default function PlanetDisplay({
       </div>
 
       {/* 4. BOTTOM FORCES PANEL (PLAYER 1 SPACE MARINES) */}
-      <div className="flex flex-wrap justify-center gap-1 min-h-[45px] w-full bg-amber-500/[0.02] border border-white/5 rounded-xl p-1 items-center">
+      <div className="flex flex-wrap justify-center gap-1.5 min-h-[45px] w-full bg-amber-500/[0.02] border border-white/5 rounded-xl p-1.5 items-center">
         {hasP1Warlord && (
           <div 
             onMouseEnter={() => handleUnitMouseEnter(CATO_SICARIUS_CARD)}
             onMouseLeave={handleUnitMouseLeave}
             onMouseMove={handleUnitMouseMove}
-            className="flex items-center gap-1 px-1.5 py-0.5 bg-gradient-to-r from-amber-550/40 to-amber-500/15 border border-amber-500/30 rounded-lg text-[9px] shadow-sm animate-pulse-slow cursor-pointer text-amber-500 font-bold"
+            onClick={() => {
+              if (p1WarlordInstance) {
+                if (gameState.phase === 'COMBAT' && isUnderConflict && gameState.activePlayerId === 'player-1') {
+                  if (gameState.combat.subPhase === 'MELEE' && !p1WarlordInstance.isExhausted) {
+                    handleStartCombatClick(p1WarlordInstance.instanceId);
+                  } else if (gameState.combat.subPhase === 'RETREAT' && !p1WarlordInstance.isExhausted) {
+                    handleRetreatClick(p1WarlordInstance.instanceId);
+                  }
+                }
+              }
+            }}
+            className={`flex items-center gap-1 px-1.5 py-0.5 bg-gradient-to-r from-amber-550/40 to-amber-500/15 border border-amber-500/30 rounded-lg text-[9px] shadow-sm animate-pulse-slow cursor-pointer text-amber-500 font-bold shrink-0 transition-all ${
+              p1WarlordInstance && selectedAttackerId === p1WarlordInstance.instanceId ? 'ring-1 ring-amber-400 bg-amber-500/10 animate-pulse' : ''
+            } ${p1WarlordInstance && p1WarlordInstance.isExhausted ? 'opacity-35 cursor-not-allowed' : ''}`}
           >
             👑 Cato (W)
+            <span className="text-red-400 font-bold font-mono text-[8.5px] ml-1 flex items-center">⚔️2</span>
+            <span className="text-green-405 font-bold font-mono text-[8.5px] flex items-center">❤️{p1WarlordHp}</span>
+            <span className="text-cyan-400 font-bold font-mono text-[8.5px] flex items-center">🔨2</span>
           </div>
         )}
 
@@ -390,13 +425,17 @@ export default function PlanetDisplay({
                 }
               }
             }}
-            className={`flex items-center gap-1 px-1.5 py-0.5 bg-white/5 border border-white/10 rounded-lg text-[9px] text-gray-300 font-sans cursor-pointer hover:bg-white/10 transition-all ${
+            className={`flex items-center gap-1 px-1.5 py-0.5 bg-white/5 border border-white/10 rounded-lg text-[9px] text-gray-300 font-sans cursor-pointer hover:bg-white/10 transition-all shrink-0 ${
               selectedAttackerId === u.instanceId ? 'ring-1 ring-amber-400 bg-amber-500/10 animate-pulse' : ''
             } ${u.isExhausted ? 'opacity-35 cursor-not-allowed' : ''}`}
             title={`${u.name}${u.isExhausted ? ' (Exhausted)' : ''}: Click to attack/retreat`}
           >
-            <span className={`truncate max-w-[80px] ${u.isExhausted ? 'text-gray-500 line-through' : ''}`}>{u.name.split(' ').slice(-1)}</span>
-            <span className="text-green-450 font-bold font-mono text-[8px]">{u.hp - u.damage}❤️</span>
+            <span className={`truncate max-w-[50px] font-medium ${u.isExhausted ? 'text-gray-500 line-through' : ''}`}>{u.name.split(' ').slice(-1)}</span>
+            <span className="text-red-400 font-bold font-mono text-[8.5px] flex items-center">⚔️{u.attack}</span>
+            <span className="text-green-400 font-bold font-mono text-[8.5px] flex items-center">❤️{u.hp - u.damage}</span>
+            {u.commandIcons > 0 && (
+              <span className="text-cyan-400 font-bold font-mono text-[8.5px] flex items-center">🔨{u.commandIcons}</span>
+            )}
           </div>
         ))}
 

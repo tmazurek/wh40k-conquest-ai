@@ -10,6 +10,7 @@ Here is the prioritized list of engine and rules gaps to implement next:
 - **Programmatic Keywords**:
   - **`Area Effect (X)`**: ✅ Fully implemented in combat resolution.
   - **`Mobile`**: Allow eligible units to shift adjacent to other planets at the start of the combat phase.
+  - planets has in correct values for resources and cards awards when won 
 - **AI Upgrades**: Teach the Heuristic AI to compute value for Area Effect placement and Mobile maneuvers.
 
 ### 🟡 Medium Priority
@@ -566,7 +567,7 @@ Checked after every action:
 
 | Condition | Result |
 |-----------|--------|
-| Warlord `wounds >= max_hp` | That player **loses**; opponent wins |
+| Warlord defeated while already bloodied | That player **loses**; opponent wins |
 | `symbol_victories[Tech] >= 3` OR Material OR Strongpoint | That player **wins** (planet victory) |
 | Concede | Opponent wins |
 
@@ -609,7 +610,11 @@ Default threshold = **3** (config `planets_to_win`).
 ```
 1. ASSIGN   attack_power → pending_damage.amount
 2. SHIELD   defender may discard shield cards (-1 per card) OR resolve
-3. APPLY    wounds += amount; destroy if wounds >= HP
+3. APPLY    wounds += amount;
+            - Standard units: destroy if wounds >= HP.
+            - Warlords:
+              - If healthy: transition to bloodied, discard excess damage, reset current damage to 0, blank card text (abilities lost), and reduce stats (Cato becomes ATK 1/HP 6, Nazdreg becomes ATK 2/HP 6).
+              - If already bloodied: destroy (triggers Game Over).
 ```
 
 ### 18.2 Shield rules

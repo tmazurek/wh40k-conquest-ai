@@ -658,12 +658,25 @@ export const applyDamageToUnit = (state: GameState, unit: CardInstance, rawDamag
   const currentHp = unit.hp;
   
   if (unit.damage >= currentHp) {
-    // Dead! Move to discard pile
-    destroyUnit(state, unit);
-  } else if (unit.type === 'Warlord' && unit.damage >= (currentHp / 2) && !unit.isBloodied) {
-    // Bloodied
-    unit.isBloodied = true;
-    addLog(state, `🩸 Warlord ${unit.name} is BLOODIED! ATK stats remain but danger is peak.`, unit.controllerId);
+    if (unit.type === 'Warlord' && !unit.isBloodied) {
+      // Bloodied flip transition!
+      unit.isBloodied = true;
+      unit.damage = 0;
+      unit.description = "";
+      
+      if (unit.id === 'sm-cato') {
+        unit.attack = 1;
+        unit.hp = 6;
+      } else if (unit.id === 'ork-nazdreg') {
+        unit.attack = 2;
+        unit.hp = 6;
+      }
+      
+      addLog(state, `🩸 Warlord ${unit.name} is BLOODIED! Ability lost and stats reduced.`, unit.controllerId);
+    } else {
+      // Normal unit death or a bloodied warlord slain
+      destroyUnit(state, unit);
+    }
   }
 };
 
@@ -679,9 +692,9 @@ const destroyUnit = (state: GameState, unit: CardInstance) => {
 
   addLog(state, `💀 Unit ${unit.name} was destroyed. Move to Discard pile.`, unit.controllerId);
 
-  // Trigger Cato reaction if destroyed on Cato's planet
+  // Trigger Cato reaction if an enemy unit is destroyed on Cato's planet
   const catoWarlord = state.players['player-1'].hq.find(u => u.id === 'sm-cato');
-  if (catoWarlord && state.warlordCommitmentsRevealed) {
+  if (catoWarlord && !catoWarlord.isBloodied && state.warlordCommitmentsRevealed && unit.controllerId !== 'player-1') {
     const catoPlanetIdx = state.warlordCommitments['player-1'];
     if (catoPlanetIdx !== null) {
       const catoPlanetId = state.planets[catoPlanetIdx]?.id;
@@ -1006,7 +1019,7 @@ export const declareAttack = (st: GameState, attackerId: string, targetId: strin
   
   // Apply Brutal
   if (attacker.keywords.includes('Brutal') || 
-     (attacker.faction === 'Orks' && hasWarlordAtPlanet(st, 'ai-1', planet.id) && st.players['ai-1'].hq.some(u => u.id === 'ork-nazdreg'))) {
+     (attacker.faction === 'Orks' && hasWarlordAtPlanet(st, 'ai-1', planet.id) && st.players['ai-1'].hq.some(u => u.id === 'ork-nazdreg' && !u.isBloodied))) {
     finalAtk += attacker.damage;
   }
 

@@ -204,6 +204,8 @@ export default function CardDisplay({ card, onClick, isSelected, canPlay = true,
         ? 'w-72 h-[410px] p-5 rounded-2xl text-[12.5px]'
         : 'w-56 h-80 p-4 rounded-xl';
 
+  const showUnplayableDimming = !canPlay && size !== 'lg' && (!instance || instance.location === 'HAND');
+
   return (
     <>
       <div
@@ -213,7 +215,7 @@ export default function CardDisplay({ card, onClick, isSelected, canPlay = true,
         onMouseMove={handleMouseMove}
         id={`card-${card.id}`}
         className={`relative flex flex-col ${dimensionsClass} border transition-all duration-300 cursor-pointer select-none overflow-hidden hover:scale-102 hover:-translate-y-1 ${factionBorderClass} ${isSelected ? 'ring-2 ring-amber-500/60 ring-offset-2 ring-offset-[#0a0a0c] scale-103 shadow-lg shadow-white/5' : ''
-          } ${!canPlay ? 'opacity-40 cursor-not-allowed' : 'shadow-md shadow-black/80 bg-black/40'} ${instance?.isExhausted && hasImage && viewMode === 'image' ? 'grayscale opacity-75' : ''
+          } ${showUnplayableDimming ? 'opacity-40 cursor-not-allowed' : 'shadow-md shadow-black/80 bg-black/40'} ${instance?.isExhausted && hasImage && viewMode === 'image' ? 'grayscale opacity-75' : ''
           }`}
       >
         {/* Background radial highlight - subtle elegance */}

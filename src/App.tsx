@@ -362,13 +362,13 @@ export default function App() {
               {/* ORK AI GARRISON (HQ & SUPPORTS) */}
               <div className="md:col-span-6 space-y-2">
                 <span className="text-[9px] text-red-555 font-mono tracking-widest block uppercase font-bold">
-                  🏗️ HQ & SUPPORT ARRAY ({ai.hq.length} Cards)
+                  🏗️ HQ & SUPPORT ARRAY ({ai.hq.filter(c => c.location === 'HQ').length} Cards)
                 </span>
                 <div className="flex gap-2 overflow-x-auto pb-1 max-w-full items-center">
-                  {ai.hq.length === 0 ? (
+                  {ai.hq.filter(c => c.location === 'HQ').length === 0 ? (
                     <div className="text-[9px] text-gray-500 italic py-3 font-mono">HQ is empty</div>
                   ) : (
-                    ai.hq.map(c => (
+                    ai.hq.filter(c => c.location === 'HQ').map(c => (
                       <div key={c.instanceId} className="shrink-0 scale-90 origin-top">
                         <CardDisplay
                           size="mini"
@@ -383,111 +383,6 @@ export default function App() {
               </div>
             </div>
           </div>
-
-          {/* STEP-BY-STEP PHASE TRANSITION PANEL */}
-          {!gameState.isGameOver && (
-            <div className="w-full space-y-3">
-              {/* 1. Commitments placed, awaiting Reveal */}
-              {gameState.warlordCommitmentsPlaced && (
-                <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/30 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 animate-slide-up shadow-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 border border-amber-500/20 shrink-0">
-                      <Sparkles className="w-4 h-4 animate-pulse" />
-                    </div>
-                    <div>
-                      <h4 className="font-heading font-bold text-xs text-white uppercase tracking-widest flex items-center gap-1.5">
-                        🤫 Coordinate Dial Prepared
-                      </h4>
-                      <p className="text-[10px] text-gray-400 mt-1 font-sans">
-                        Both commanders have logged their target planet sectors secretly on their dials. Ready to disclose choices?
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleRevealWarlords}
-                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-655 font-bold border border-amber-600/50 text-black text-[10px] tracking-widest uppercase rounded-xl transition-all shadow-md shadow-black/80 flex items-center gap-2 cursor-pointer"
-                  >
-                    Reveal Warlord Commitments <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {/* 2. Commitments revealed, awaiting Command Struggles resolution */}
-              {gameState.warlordCommitmentsRevealed && gameState.commandStrugglesResolved === false && (
-                <div className="bg-gradient-to-r from-cyan-500/15 via-cyan-500/5 to-transparent border border-cyan-500/30 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 animate-slide-up shadow-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-400 border border-cyan-500/20 shrink-0">
-                      <Coins className="w-4 h-4 animate-pulse" />
-                    </div>
-                    <div>
-                      <h4 className="font-heading font-bold text-xs text-white uppercase tracking-widest">
-                        🪐 Warlords Aligned & Deployed
-                      </h4>
-                      <p className="text-[10px] text-gray-400 mt-1 font-sans">
-                        Captain Cato Sicarius and Nazdreg are positioned on their target worlds. Execute struggles to claim strategic materials and intel card draws!
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleResolveCommandStruggles}
-                    className="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-600 font-bold border border-cyan-600 text-black text-[10px] tracking-widest uppercase rounded-xl transition-all shadow-md shadow-black/80 flex items-center gap-2 cursor-pointer"
-                  >
-                    Resolve Command Struggles <Coins className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {/* 3. Command Struggles resolved, awaiting proceed to Combat Phase */}
-              {gameState.commandStrugglesResolved && (
-                <div className="bg-gradient-to-r from-purple-500/15 via-purple-500/5 to-transparent border border-purple-500/30 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 animate-slide-up shadow-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-400 border border-purple-500/20 shrink-0">
-                      <Trophy className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="font-heading font-bold text-xs text-white uppercase tracking-widest">
-                        📈 Struggles Computed
-                      </h4>
-                      <p className="text-[10px] text-gray-400 mt-1 font-sans">
-                        Resource flow and card draws have been tallied and allocated to the log records. Advance into the combat stage!
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleProceedToCombatPhase}
-                    className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 font-bold text-white text-[10px] tracking-widest uppercase rounded-xl transition-all shadow-md shadow-black/80 flex items-center gap-2 cursor-pointer"
-                  >
-                    Begin Sector Combat ⚔️ <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {/* 4. Combat planet awaiting checklist acknowledgement */}
-              {gameState.combatPlanetAwaitingAcknowledgement && (
-                <div className="bg-gradient-to-r from-red-500/15 via-red-500/5 to-transparent border border-red-500/30 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 animate-slide-up shadow-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 border border-red-500/20 shrink-0">
-                      <Swords className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="font-heading font-bold text-xs text-white uppercase tracking-widest">
-                        🏅 Sector Battle Concluded
-                      </h4>
-                      <p className="text-[10px] text-gray-400 mt-1 font-sans">
-                        Forces on the active sector have resolved their clash. Survival, capture, or retreat consequences are finalized. Check details in the logs.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleAcknowledgeCombatPlanet}
-                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 font-bold border border-red-500 text-white text-[10px] tracking-widest uppercase rounded-xl transition-all shadow-md shadow-black/80 flex items-center gap-2 cursor-pointer animate-pulse"
-                  >
-                    Acknowledge & Proceed to next Sector <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* MAIN STATUS SUB-SCREEN IF GAME IS OVER */}
           {gameState.isGameOver ? (
@@ -511,71 +406,7 @@ export default function App() {
             </div>
           ) : null}
 
-          {/* COMBAT PHASE DEEP OVERVIEW BANNER */}
-          {gameState.phase === 'COMBAT' && activeCombatPlanet && !gameState.isGameOver && !gameState.combatPlanetAwaitingAcknowledgement && (
-            <div className="w-full bg-black/40 border border-white/10 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 animate-slide-up">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 border border-red-500/20 shrink-0">
-                  <Swords className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-heading font-bold text-xs text-white uppercase tracking-widest">
-                    ⚔️ Resolving Battle: {activeCombatPlanet.name} (Planet {activeCombatPlanet.index + 1})
-                  </h4>
-                  <p className="text-[10px] text-gray-500 font-mono mt-0.5">
-                    Sub-phase: <strong className="text-yellow-500 uppercase">{gameState.combat.subPhase}</strong> | 
-                    Active priority player: <strong>{gameState.activePlayerId === 'player-1' ? '👤 YOU' : '🤖 ORK AI'}</strong>
-                  </p>
-                </div>
-              </div>
 
-              {/* ACTION DIALOGS BASED ON COMBAT STATE */}
-              <div className="flex flex-wrap items-center gap-2">
-                {gameState.combat.subPhase === 'SHIELD_PROMPT' && gameState.activePlayerId === 'player-1' && (
-                  <div className="flex items-center gap-2 bg-black/40 p-2 rounded-xl border border-sky-500/30 animate-pulse">
-                    <span className="text-[10px] text-sky-450 font-mono px-2 tracking-wider">🛡️ DISCARD SHIELD?</span>
-                    {p1.hand.filter(c => c.shields > 0).map(sc => (
-                      <button
-                        key={sc.instanceId}
-                        onClick={() => handleShieldDecision(sc.instanceId)}
-                        className="px-2.5 py-1 text-[10px] bg-sky-950/40 hover:bg-sky-900/60 border border-sky-700/40 rounded text-sky-300 font-bold transition-colors"
-                        title={sc.name}
-                      >
-                        {sc.name.split(' ').slice(-1)} (+{sc.shields}🛡️)
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => handleShieldDecision('none')}
-                      className="px-2.5 py-1 text-[10px] bg-white/5 hover:bg-white/10 border border-white/10 rounded text-gray-400 font-bold transition-colors"
-                    >
-                      Use No Shield (Take damage)
-                    </button>
-                  </div>
-                )}
-
-                {gameState.combat.subPhase === 'RETREAT' && gameState.activePlayerId === 'player-1' && (
-                  <div className="flex items-center gap-3 bg-black/40 p-2 rounded-xl border border-white/10">
-                    <span className="text-[10px] text-amber-500 font-mono uppercase tracking-widest">🏳️ Retreat ready forces:</span>
-                    <button
-                      onClick={handleDoneRetreating}
-                      className="px-3.5 py-1 bg-white/10 hover:bg-white/15 border border-white/25 text-white text-[10px] font-bold tracking-widest uppercase rounded transition-colors"
-                    >
-                      Done Retreating (Rerun upkeep Check)
-                    </button>
-                  </div>
-                )}
-
-                {(gameState.combat.subPhase === 'MELEE' || gameState.combat.subPhase === 'RANGED') && gameState.activePlayerId === 'player-1' && (
-                  <button
-                    onClick={handlePassCombatAction}
-                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 border border-amber-600/40 text-black text-[10px] font-bold tracking-widest uppercase rounded transition-colors flex items-center gap-1.5"
-                  >
-                    ⏮️ Pass Action
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* THE PLANET ROW */}
           <section className="space-y-3">
@@ -600,8 +431,8 @@ export default function App() {
 
                 // Units at this planet
                 const unitsHere = getUnitsAtPlanet(gameState, planet.id);
-                const smHere = unitsHere.filter(u => u.controllerId === 'player-1');
-                const orkHere = unitsHere.filter(u => u.controllerId === 'ai-1');
+                const smHere = unitsHere.filter(u => u.controllerId === 'player-1' && u.type !== 'Warlord');
+                const orkHere = unitsHere.filter(u => u.controllerId === 'ai-1' && u.type !== 'Warlord');
 
                 const hasP1Warlord = hasWarlordAtPlanet(gameState, 'player-1', planet.id);
                 const hasAiWarlord = hasWarlordAtPlanet(gameState, 'ai-1', planet.id);
@@ -628,47 +459,6 @@ export default function App() {
               })}
             </div>
           </section>
-
-          {/* SECRET WARLORD COMMITMENT RADIAL DIAL */}
-          {gameState.phase === 'COMMAND' && !gameState.warlordCommitmentsRevealed && (
-            <section className="bg-black/40 border border-white/10 rounded-2xl p-6 text-center shadow-lg animate-fade-in relative">
-              <div className="max-w-md mx-auto space-y-4">
-                <Sparkles className="w-8 h-8 text-amber-500 mx-auto animate-pulse" />
-                <h3 className="font-serif italic text-base tracking-wide text-white uppercase">
-                  ⚔️ Secret Warlord Commitment Dial
-                </h3>
-                <p className="text-xs text-gray-400">
-                  Choose which planet your Warlord, Cato Sicarius, commits his forces to. Nazdreg will secretly commit too! The reveal will launch command struggles.
-                </p>
-
-                <div className="grid grid-cols-5 gap-2 pt-2">
-                  {gameState.planets.map((planet, idx) => (
-                    <button
-                      key={planet.id}
-                      onClick={() => handleCommitWarlord(idx)}
-                      disabled={gameState.warlordCommitments['player-1'] !== null}
-                      className={`p-3 rounded-lg border font-mono text-center text-xs tracking-wider font-bold transition-all ${
-                        gameState.warlordCommitments['player-1'] === idx
-                          ? 'bg-white text-black border-white scale-102 font-extrabold shadow shadow-white/10'
-                          : 'bg-black/20 hover:bg-white/5 hover:border-white/20 border-white/10 text-gray-300'
-                      }`}
-                    >
-                      <span>{idx + 1}</span>
-                      <span className="block text-[8px] scale-90 tracking-tighter opacity-70 mt-0.5 uppercase">
-                        {planet.name.substring(0,6)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                {gameState.warlordCommitments['player-1'] !== null && (
-                  <div className="text-xs text-yellow-500 font-mono italic animate-pulse-slow">
-                    Waiting for Warlords reveal... Locked on Planet {gameState.warlordCommitments['player-1'] + 1}
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
 
           {/* BOTTOM SHELF: GARRISON OUTPOST & CARDS IN YOUR HAND SIDE-BY-SIDE */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
@@ -865,6 +655,195 @@ export default function App() {
                 className="w-full mt-1 py-1.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed text-gray-300 border border-white/15 rounded font-bold tracking-wider uppercase transition-colors text-[10px] text-center"
               >
                 ⏱️ Pass Deployment
+              </button>
+            </div>
+          )}
+
+          {/* COMMITMENTS READY TO REVEAL WIDGET */}
+          {gameState.warlordCommitmentsPlaced && (
+            <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/30 rounded-xl p-4 space-y-3 font-mono text-xs shadow-lg animate-fade-in text-center">
+              <div className="flex items-center justify-center gap-1.5 border-b border-white/5 pb-2">
+                <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
+                <span className="font-mono text-amber-450 tracking-wider text-[11px] font-bold uppercase">
+                  🤫 DIAL CO-ORDINATES LOCKED
+                </span>
+              </div>
+              <p className="text-gray-300 text-[10px] leading-relaxed">
+                Both commanders have logged their target planet sectors secretly on their dials.
+              </p>
+              <button
+                onClick={handleRevealWarlords}
+                className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 font-bold border border-amber-600/50 text-black text-[10px] tracking-widest uppercase rounded transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                Reveal Commitments <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          {/* SECRET WARLORD COMMITMENT RADIAL DIAL */}
+          {gameState.phase === 'COMMAND' && !gameState.warlordCommitmentsRevealed && (
+            <div className="bg-black/50 border border-white/10 rounded-xl p-4 space-y-3 shadow-lg animate-fade-in relative text-center">
+              <div className="flex items-center justify-center gap-1.5 border-b border-white/5 pb-2">
+                <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
+                <span className="font-serif italic text-xs tracking-wide text-white uppercase">
+                  ⚔️ Warlord commitment dial
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-400 leading-normal">
+                Commit Captain Cato Sicarius secretly to a planet sector. Nazdreg will commit secretly too.
+              </p>
+
+              <div className="grid grid-cols-5 gap-1 pt-1">
+                {gameState.planets.map((planet, idx) => (
+                  <button
+                    key={planet.id}
+                    onClick={() => handleCommitWarlord(idx)}
+                    disabled={gameState.warlordCommitments['player-1'] !== null}
+                    className={`py-2 px-1 rounded border font-mono text-center text-xs tracking-wider font-bold transition-all ${
+                      gameState.warlordCommitments['player-1'] === idx
+                        ? 'bg-white text-black border-white scale-102 font-extrabold shadow shadow-white/10'
+                        : 'bg-black/20 hover:bg-white/5 hover:border-white/20 border-white/10 text-gray-300'
+                    }`}
+                  >
+                    <span>{idx + 1}</span>
+                    <span className="block text-[7px] scale-90 tracking-tighter opacity-70 mt-0.5 uppercase">
+                      {planet.name.substring(0, 5)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {gameState.warlordCommitments['player-1'] !== null && (
+                <div className="text-[10px] text-yellow-500 font-mono italic animate-pulse-slow">
+                  Locked on Planet {gameState.warlordCommitments['player-1'] + 1}. Waiting for AI...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* WARLORDS ALIGNED & DEPLOYED RESOLVE STRUGGLES WIDGET */}
+          {gameState.warlordCommitmentsRevealed && gameState.commandStrugglesResolved === false && (
+            <div className="bg-gradient-to-r from-cyan-500/15 via-cyan-500/5 to-transparent border border-cyan-500/30 rounded-xl p-4 space-y-3 font-mono text-xs shadow-lg animate-fade-in text-center">
+              <div className="flex items-center justify-center gap-1.5 border-b border-white/5 pb-2">
+                <Coins className="w-4 h-4 text-cyan-400 animate-pulse" />
+                <span className="font-mono text-cyan-400 tracking-wider text-[11px] font-bold uppercase">
+                  🪐 WARLORDS ALIGNED
+                </span>
+              </div>
+              <p className="text-gray-300 text-[10px] leading-relaxed">
+                Captain Cato Sicarius and Nazdreg are positioned. Execute struggles to claim materials and card draws!
+              </p>
+              <button
+                onClick={handleResolveCommandStruggles}
+                className="w-full py-1.5 bg-cyan-500 hover:bg-cyan-600 font-bold border border-cyan-600 text-black text-[10px] tracking-widest uppercase rounded transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                Resolve Command Struggles <Coins className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          {/* COMBAT PHASE DEEP OVERVIEW WIDGET */}
+          {gameState.phase === 'COMBAT' && activeCombatPlanet && !gameState.isGameOver && !gameState.combatPlanetAwaitingAcknowledgement && (
+            <div className="bg-black/50 border border-white/10 rounded-xl p-4 space-y-3 shadow-lg animate-fade-in relative text-center">
+              <div className="flex items-center justify-center gap-1.5 border-b border-white/5 pb-2">
+                <Swords className="w-4 h-4 text-red-500" />
+                <span className="font-mono text-red-500 tracking-wider text-[11px] font-bold uppercase">
+                  ⚔️ BATTLE: {activeCombatPlanet.name.substring(0, 10)}
+                </span>
+              </div>
+              <div className="text-[10px] text-gray-400 font-mono space-y-1">
+                <div>Sub-phase: <strong className="text-yellow-500 uppercase">{gameState.combat.subPhase}</strong></div>
+                <div>Turn: <strong>{gameState.activePlayerId === 'player-1' ? '👤 YOU' : '🤖 ORK AI'}</strong></div>
+              </div>
+
+              {/* ACTION DIALOGS BASED ON COMBAT STATE */}
+              <div className="flex flex-col gap-2 pt-1">
+                {gameState.combat.subPhase === 'SHIELD_PROMPT' && gameState.activePlayerId === 'player-1' && (
+                  <div className="flex flex-col gap-1.5 bg-black/40 p-2 rounded border border-sky-500/30 animate-pulse text-center">
+                    <span className="text-[9px] text-sky-455 font-mono tracking-wider font-bold">🛡️ DISCARD SHIELD?</span>
+                    <div className="flex flex-wrap gap-1 justify-center">
+                      {p1.hand.filter(c => c.shields > 0).map(sc => (
+                        <button
+                          key={sc.instanceId}
+                          onClick={() => handleShieldDecision(sc.instanceId)}
+                          className="px-2 py-1 text-[9px] bg-sky-950/40 hover:bg-sky-900/60 border border-sky-700/40 rounded text-sky-300 font-bold transition-colors cursor-pointer"
+                          title={sc.name}
+                        >
+                          {sc.name.split(' ').slice(-1)} (+{sc.shields}🛡️)
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => handleShieldDecision('none')}
+                      className="w-full py-1 text-[9px] bg-white/5 hover:bg-white/10 border border-white/10 rounded text-gray-405 font-bold transition-colors cursor-pointer"
+                    >
+                      Use No Shield (Take damage)
+                    </button>
+                  </div>
+                )}
+
+                {gameState.combat.subPhase === 'RETREAT' && gameState.activePlayerId === 'player-1' && (
+                  <div className="flex flex-col gap-1.5 bg-black/40 p-2 rounded border border-white/10 text-center">
+                    <span className="text-[9px] text-amber-500 font-mono uppercase tracking-widest font-bold">🏳️ Retreat ready forces</span>
+                    <button
+                      onClick={handleDoneRetreating}
+                      className="w-full py-1 bg-white/10 hover:bg-white/15 border border-white/25 text-white text-[9px] font-bold tracking-widest uppercase rounded transition-colors cursor-pointer"
+                    >
+                      Done Retreating
+                    </button>
+                  </div>
+                )}
+
+                {(gameState.combat.subPhase === 'MELEE' || gameState.combat.subPhase === 'RANGED') && gameState.activePlayerId === 'player-1' && (
+                  <button
+                    onClick={handlePassCombatAction}
+                    className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 border border-amber-600/40 text-black text-[10px] font-bold tracking-widest uppercase rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    ⏮️ Pass Action
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STRUGGLES RESOLVED PROCEED TO COMBAT WIDGET */}
+          {gameState.commandStrugglesResolved && (
+            <div className="bg-gradient-to-r from-purple-500/15 via-purple-500/5 to-transparent border border-purple-500/30 rounded-xl p-4 space-y-3 font-mono text-xs shadow-lg animate-fade-in text-center">
+              <div className="flex items-center justify-center gap-1.5 border-b border-white/5 pb-2">
+                <Trophy className="w-4 h-4 text-purple-400 animate-pulse" />
+                <span className="font-mono text-purple-450 tracking-wider text-[11px] font-bold uppercase">
+                  📈 STRUGGLES COMPUTED
+                </span>
+              </div>
+              <p className="text-gray-300 text-[10px] leading-relaxed">
+                Resource flows and card draws have been allocated. Advance into the combat stage.
+              </p>
+              <button
+                onClick={handleProceedToCombatPhase}
+                className="w-full py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 font-bold text-white text-[10px] tracking-widest uppercase rounded transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                Begin Sector Combat ⚔️ <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          {/* SECTOR BATTLE CONCLUDED WIDGET */}
+          {gameState.combatPlanetAwaitingAcknowledgement && (
+            <div className="bg-gradient-to-r from-red-500/15 via-red-500/5 to-transparent border border-red-500/30 rounded-xl p-4 space-y-3 font-mono text-xs shadow-lg animate-fade-in text-center">
+              <div className="flex items-center justify-center gap-1.5 border-b border-white/5 pb-2">
+                <Swords className="w-4 h-4 text-red-550 animate-pulse" />
+                <span className="font-mono text-red-450 tracking-wider text-[11px] font-bold uppercase">
+                  🏅 BATTLE CONCLUDED
+                </span>
+              </div>
+              <p className="text-gray-300 text-[10px] leading-relaxed">
+                Forces on the active sector have resolved their clash. Capture/retreats are finalized.
+              </p>
+              <button
+                onClick={handleAcknowledgeCombatPlanet}
+                className="w-full py-1.5 bg-red-650 hover:bg-red-700 font-bold border border-red-600 text-white text-[10px] tracking-widest uppercase rounded transition-colors cursor-pointer flex items-center justify-center gap-1.5 animate-pulse"
+              >
+                Next Sector <ArrowRight className="w-3 h-3" />
               </button>
             </div>
           )}
