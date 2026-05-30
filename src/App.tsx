@@ -14,12 +14,14 @@ import {
   declareAttack, 
   resolveShieldCard, 
   retreatUnitFromCombat, 
-  completeCombatRoundAndReady, 
+  completePlayerRetreatWindow, 
+  retreatWarlordActiveTurn,
   runAiTurn, 
   getUnitsAtPlanet, 
   getPlacedUnitsForPlayer,
   hasWarlordAtPlanet,
-  passCombatAction
+  passCombatAction,
+  resolvePlanetBattleAbilityChoice
 } from './engine/gameLogic';
 import { GameState, CardInstance, Planet } from './engine/types';
 import CardDisplay from './components/CardDisplay';
@@ -55,6 +57,30 @@ export default function App() {
   // Helper selectors
   const p1 = gameState.players['player-1'];
   const ai = gameState.players['ai-1'];
+
+  const p1Symbols = useMemo(() => {
+    const counts = { Tech: 0, Strongpoint: 0, Material: 0 };
+    p1.victoryDisplay.forEach((p) => {
+      p.symbols.forEach((sym) => {
+        if (sym === 'Tech') counts.Tech++;
+        if (sym === 'Strongpoint') counts.Strongpoint++;
+        if (sym === 'Material') counts.Material++;
+      });
+    });
+    return counts;
+  }, [p1.victoryDisplay]);
+
+  const aiSymbols = useMemo(() => {
+    const counts = { Tech: 0, Strongpoint: 0, Material: 0 };
+    ai.victoryDisplay.forEach((p) => {
+      p.symbols.forEach((sym) => {
+        if (sym === 'Tech') counts.Tech++;
+        if (sym === 'Strongpoint') counts.Strongpoint++;
+        if (sym === 'Material') counts.Material++;
+      });
+    });
+    return counts;
+  }, [ai.victoryDisplay]);
 
   // AI Automatic trigger on turn switch
   useEffect(() => {
@@ -191,9 +217,18 @@ export default function App() {
   const handleDoneRetreating = () => {
     setGameState(prev => {
       const next = JSON.parse(JSON.stringify(prev));
-      completeCombatRoundAndReady(next);
+      completePlayerRetreatWindow(next, 'player-1');
       return next;
     });
+  };
+
+  const handleRetreatWarlordActiveTurn = () => {
+    setGameState(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      retreatWarlordActiveTurn(next, 'player-1');
+      return next;
+    });
+    setSelectedAttackerId(null);
   };
 
   const handlePassCombatAction = () => {
@@ -232,6 +267,14 @@ export default function App() {
     setGameState(prev => {
       const next = JSON.parse(JSON.stringify(prev));
       manualAcknowledgeCombatPlanet(next);
+      return next;
+    });
+  };
+
+  const handleResolvePlanetBattleAbilityChoice = (choice: boolean) => {
+    setGameState(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      resolvePlanetBattleAbilityChoice(next, choice);
       return next;
     });
   };
@@ -320,7 +363,7 @@ export default function App() {
                   🤖 ORK AI COMMANDER BOARD
                 </h3>
               </div>
-              <div className="flex items-center gap-3 font-mono text-[9px]">
+              <div className="flex flex-wrap items-center gap-3 font-mono text-[9px]">
                 <div className="bg-black/40 border border-red-900/15 px-2 py-0.5 rounded flex items-center gap-1.5">
                   <Coins className="w-3 h-3 text-red-500" />
                   <span>Resources: <strong className="text-red-400 font-bold">{ai.resources}</strong></span>
@@ -330,6 +373,12 @@ export default function App() {
                 </div>
                 <div className="bg-black/40 border border-red-900/15 px-2 py-0.5 rounded">
                   <span>Discard: <strong className="text-gray-450 font-bold">{ai.discard.length}</strong></span>
+                </div>
+                <div className="bg-black/40 border border-red-900/15 px-2 py-0.5 rounded flex items-center gap-1.5">
+                  <span className="text-gray-500 uppercase font-semibold text-[8px] mr-0.5">Symbols:</span>
+                  <span className="text-cyan-400 font-bold flex items-center gap-0.5" title="Tech">🧪 {aiSymbols.Tech}</span>
+                  <span className="text-blue-400 font-bold flex items-center gap-0.5" title="Strongpoint">🛡️ {aiSymbols.Strongpoint}</span>
+                  <span className="text-rose-400 font-bold flex items-center gap-0.5" title="Material">💎 {aiSymbols.Material}</span>
                 </div>
               </div>
             </div>
@@ -460,24 +509,45 @@ export default function App() {
             </div>
           </section>
 
-          {/* BOTTOM SHELF: GARRISON OUTPOST & CARDS IN YOUR HAND SIDE-BY-SIDE */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
-            
-            {/* GARRISON OUTPOST COLUMN */}
-            <div className="lg:col-span-5 space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <h2 className="font-heading font-semibold text-xs text-slate-400 uppercase tracking-widest flex items-center gap-2 font-mono">
-                  <Coins className="w-3.5 h-3.5 text-gray-500" />
-                  GARRISON OUTPOST (HQ & SUPPORTS)
-                </h2>
-
-                <div className="flex items-center gap-2 bg-black/40 px-2 py-1 rounded border border-white/10 text-[10px] font-mono">
-                  <Coins className="w-3.5 h-3.5 text-amber-500" />
-                  <strong className="text-amber-500 font-bold font-mono">{p1.resources}</strong>
-                  <span className="text-white/10">|</span>
-                  <span className="text-green-400 font-bold">{p1.victoryDisplay.length}/3 🪐</span>
+          {/* PLAYER COMMANDER BOARD (BOTTOM TIER) */}
+          <div className="bg-amber-950/[0.03] border border-white/5 rounded-2xl p-4 space-y-4 shadow-lg relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-amber-900/5 via-transparent to-transparent pointer-events-none" />
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-2 relative z-10">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-amber-550 animate-pulse" />
+                <h3 className="font-mono text-amber-500 font-bold uppercase tracking-widest text-[10px] flex items-center gap-1.5">
+                  👤 PLAYER COMMANDER BOARD
+                </h3>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 font-mono text-[9px]">
+                <div className="bg-black/40 border border-white/10 px-2 py-0.5 rounded flex items-center gap-1.5">
+                  <Coins className="w-3 h-3 text-amber-500" />
+                  <span>Resources: <strong className="text-amber-500 font-bold">{p1.resources}</strong></span>
+                </div>
+                <div className="bg-black/40 border border-white/10 px-2 py-0.5 rounded">
+                  <span>Deck: <strong className="text-gray-300 font-bold">{p1.deck.length}</strong></span>
+                </div>
+                <div className="bg-black/40 border border-white/10 px-2 py-0.5 rounded">
+                  <span>Discard: <strong className="text-gray-450 font-bold">{p1.discard.length}</strong></span>
+                </div>
+                <div className="bg-black/40 border border-white/10 px-2 py-0.5 rounded flex items-center gap-1.5">
+                  <span className="text-gray-500 uppercase font-semibold text-[8px] mr-0.5">Symbols:</span>
+                  <span className="text-cyan-400 font-bold flex items-center gap-0.5" title="Tech">🧪 {p1Symbols.Tech}</span>
+                  <span className="text-blue-400 font-bold flex items-center gap-0.5" title="Strongpoint">🛡️ {p1Symbols.Strongpoint}</span>
+                  <span className="text-rose-400 font-bold flex items-center gap-0.5" title="Material">💎 {p1Symbols.Material}</span>
                 </div>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10">
+              
+              {/* GARRISON OUTPOST COLUMN */}
+              <div className="lg:col-span-5 space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <h2 className="font-heading font-semibold text-xs text-slate-400 uppercase tracking-widest flex items-center gap-2 font-mono">
+                    🏗️ GARRISON OUTPOST (HQ & SUPPORTS)
+                  </h2>
+                </div>
 
               {/* Outpost grid: Support cards built, Warlord in Garrison */}
               <div className="bg-black/40 rounded-xl border border-white/10 p-3 flex flex-wrap gap-2.5 min-h-[180px] content-start items-start overflow-y-auto">
@@ -604,6 +674,7 @@ export default function App() {
             </div>
 
           </div>
+        </div>
 
         </div>
 
@@ -742,8 +813,51 @@ export default function App() {
             </div>
           )}
 
+          {/* PLANET BATTLE ABILITY DECISION WIDGET */}
+          {gameState.pendingPlanetBattleAbilityTrigger && (() => {
+            const pending = gameState.pendingPlanetBattleAbilityTrigger;
+            const planet = gameState.planets.find(p => p.id === pending.planetId);
+            if (!planet) return null;
+            return (
+              <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/30 rounded-xl p-4 space-y-3 font-mono text-xs shadow-lg animate-fade-in text-center">
+                <div className="flex items-center justify-center gap-1.5 border-b border-white/5 pb-2">
+                  <Globe className="w-4 h-4 text-amber-500 animate-pulse" />
+                  <span className="font-mono text-amber-450 tracking-wider text-[11px] font-bold uppercase">
+                    🪐 PLANET BATTLE TRIGGER
+                  </span>
+                </div>
+                <p className="text-gray-300 text-[10px] leading-relaxed">
+                  You captured <strong className="text-white">{planet.name}</strong>! Do you want to trigger its Battle ability?
+                </p>
+                <div className="text-[9.5px] text-amber-200/90 bg-black/45 border border-white/5 p-2 rounded text-left max-h-[85px] overflow-y-auto italic">
+                  {planet.name === 'Elouith' && "Search the top 3 cards of your deck for a card. Add it to your hand, and place the remaining cards on the bottom of your deck in any order."}
+                  {planet.name === 'Iridial' && "Remove all damage from a target unit."}
+                  {planet.name === 'Osus IV' && "Take 1 Resource from your opponent."}
+                  {planet.name === 'Carnath' && "Trigger the Battle ability of another planet in play."}
+                  {planet.name === 'Tarrus' && "If you control fewer units than your opponent, gain 3 Resources or draw 3 cards."}
+                  {planet.name === 'Barlus' && "Discard 1 card at random from your opponent's hand."}
+                  {planet.name === "Y'varn" && "Each player puts a unit into play from his hand at his HQ."}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleResolvePlanetBattleAbilityChoice(true)}
+                    className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 font-bold border border-amber-600 text-black text-[10px] tracking-widest uppercase rounded transition-colors cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    ✅ Yes
+                  </button>
+                  <button
+                    onClick={() => handleResolvePlanetBattleAbilityChoice(false)}
+                    className="flex-1 py-1.5 bg-white/10 hover:bg-white/15 font-bold border border-white/20 text-white text-[10px] tracking-widest uppercase rounded transition-colors cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    ❌ No
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* COMBAT PHASE DEEP OVERVIEW WIDGET */}
-          {gameState.phase === 'COMBAT' && activeCombatPlanet && !gameState.isGameOver && !gameState.combatPlanetAwaitingAcknowledgement && (
+          {gameState.phase === 'COMBAT' && activeCombatPlanet && !gameState.isGameOver && !gameState.combatPlanetAwaitingAcknowledgement && !gameState.pendingPlanetBattleAbilityTrigger && (
             <div className="bg-black/50 border border-white/10 rounded-xl p-4 space-y-3 shadow-lg animate-fade-in relative text-center">
               <div className="flex items-center justify-center gap-1.5 border-b border-white/5 pb-2">
                 <Swords className="w-4 h-4 text-red-500" />
@@ -795,12 +909,26 @@ export default function App() {
                 )}
 
                 {(gameState.combat.subPhase === 'MELEE' || gameState.combat.subPhase === 'RANGED') && gameState.activePlayerId === 'player-1' && (
-                  <button
-                    onClick={handlePassCombatAction}
-                    className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 border border-amber-600/40 text-black text-[10px] font-bold tracking-widest uppercase rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    ⏮️ Pass Action
-                  </button>
+                  <div className="flex flex-col gap-2 w-full">
+                    {selectedAttackerId && (() => {
+                      const warlord = p1.hq.find(u => u.type === 'Warlord');
+                      return warlord && selectedAttackerId === warlord.instanceId && !warlord.isExhausted ? (
+                        <button
+                          onClick={handleRetreatWarlordActiveTurn}
+                          className="w-full py-1.5 bg-red-950/50 hover:bg-red-900/60 border border-red-900/40 text-red-400 text-[10px] font-bold tracking-widest uppercase rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          🏃 Exhaust Warlord to Retreat
+                        </button>
+                      ) : null;
+                    })()}
+
+                    <button
+                      onClick={handlePassCombatAction}
+                      className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 border border-amber-600/40 text-black text-[10px] font-bold tracking-widest uppercase rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      ⏮️ Pass Action
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
