@@ -17,6 +17,8 @@ export interface CardDefinition {
   keywords: string[];
   description: string;
   conquestCardId?: string;
+  startingCards?: number;
+  startingResources?: number;
 }
 
 export interface CardInstance extends CardDefinition {

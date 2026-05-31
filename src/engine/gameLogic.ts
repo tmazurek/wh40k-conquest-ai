@@ -77,6 +77,11 @@ export const initGame = (seed: number = 42): GameState => {
   const catoWarlord = { ...createCardInstance('sm-cato', p1Id), location: 'HQ' as const };
   const nazdregWarlord = { ...createCardInstance('ork-nazdreg', aiId), location: 'HQ' as const };
 
+  const p1StartingResources = catoWarlord.startingResources ?? 7;
+  const p1StartingCards = catoWarlord.startingCards ?? 7;
+  const aiStartingResources = nazdregWarlord.startingResources ?? 7;
+  const aiStartingCards = nazdregWarlord.startingCards ?? 7;
+
   const state: GameState = {
     turn: 1,
     phase: 'DEPLOY',
@@ -90,7 +95,7 @@ export const initGame = (seed: number = 42): GameState => {
       [p1Id]: {
         id: p1Id,
         faction: 'Space Marines',
-        resources: 6, // Starter resources
+        resources: p1StartingResources,
         hand: [],
         deck: smDeck,
         discard: [],
@@ -100,7 +105,7 @@ export const initGame = (seed: number = 42): GameState => {
       [aiId]: {
         id: aiId,
         faction: 'Orks',
-        resources: 6, // Starter resources
+        resources: aiStartingResources,
         hand: [],
         deck: orkDeck,
         discard: [],
@@ -129,9 +134,9 @@ export const initGame = (seed: number = 42): GameState => {
   addLog(state, '🛡️ Player 1 command: Space Marines (Captain Cato Sicarius)');
   addLog(state, '🪓 AI command: Orks (Nazdreg)');
 
-  // Draw 6 cards as starting hand
-  drawCardsForPlayer(state, p1Id, 6);
-  drawCardsForPlayer(state, aiId, 6);
+  // Draw starting hand based on Warlord specifications
+  drawCardsForPlayer(state, p1Id, p1StartingCards);
+  drawCardsForPlayer(state, aiId, aiStartingCards);
 
   return state;
 };

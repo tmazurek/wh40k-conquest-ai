@@ -1229,7 +1229,9 @@ export const SPACE_MARINE_CARDS: Record<string, CardDefinition> = {
     traits: ["Soldier","Ultramarines"],
     keywords: [],
     description: "Reaction: After an enemy unit at this planet is destroyed, gain 1 [RESOURCE].",
-    conquestCardId: '01001'
+    conquestCardId: '01001',
+    startingCards: 7,
+    startingResources: 7
   },
   'sm-chosen': {
     id: 'sm-chosen',

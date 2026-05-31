@@ -1109,7 +1109,9 @@ export const ORK_CARDS: Record<string, CardDefinition> = {
     traits: ["Warrior","Warboss"],
     keywords: [],
     description: "Each other unit you control at this planet gains Brutal.",
-    conquestCardId: '01003'
+    conquestCardId: '01003',
+    startingCards: 7,
+    startingResources: 7
   },
   'ork-flashgitz': {
     id: 'ork-flashgitz',
