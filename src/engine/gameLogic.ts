@@ -917,31 +917,177 @@ export const resolveNextCombatPlanet = (state: GameState) => {
     }
   } else {
     // If only one faction has units here and it is the first planet, they win it uncontested!
-    let didSplice = false;
     if (isFirst && units.length > 0) {
       const winnerId = units[0].controllerId;
-      capturePlanet(state, winnerId, currentIdx);
-      didSplice = true;
-
-      // Pause here to notify the user of uncontested capture!
-      state.combat.wasPlanetSplicedInResolution = true;
-      state.combatPlanetAwaitingAcknowledgement = true;
+      if (winnerId === 'player-1') {
+        state.pendingPlanetBattleAbilityTrigger = { planetId: planet.id, winnerId: 'player-1' };
+      } else {
+        // AI automatically triggers Battle ability
+        capturePlanet(state, winnerId, currentIdx, true);
+        state.combat.wasPlanetSplicedInResolution = false;
+        state.combatPlanetAwaitingAcknowledgement = true;
+      }
       return;
     }
     
     // Skip to next planet
-    if (!didSplice) {
-      state.combat.activePlanetIndex++;
-    }
+    state.combat.activePlanetIndex++;
     resolveNextCombatPlanet(state);
   }
 };
+export const triggerPlanetBattleAbility = (state: GameState, winnerId: string, planet: Planet) => {
+  const winner = state.players[winnerId];
+  const opponentId = winnerId === 'player-1' ? 'ai-1' : 'player-1';
+  const opponent = state.players[opponentId];
 
-const capturePlanet = (state: GameState, winnerId: string, planetIdx: number) => {
+  addLog(state, `🪐 Triggering Battle ability of ${planet.name} for ${winner.faction}...`);
+
+  switch (planet.name) {
+    case 'Elouith': {
+      // Battle: Search the top 3 cards of your deck for a card. Add it to your hand, and place the remaining cards on the bottom of your deck in any order.
+      if (winner.deck.length === 0) {
+        if (winner.discard.length > 0) {
+          addLog(state, `🔄 ${winner.faction} shuffles discard pile back to deck.`);
+          winner.deck = shuffle(winner.discard.map(c => ({ ...c, location: 'HAND', damage: 0, isExhausted: false })), () => rng.next());
+          winner.discard = [];
+        }
+      }
+      if (winner.deck.length > 0) {
+        const cardsToChoose = winner.deck.slice(-3).reverse();
+        if (cardsToChoose.length > 0) {
+          let bestIdx = 0;
+          let bestVal = -1;
+          cardsToChoose.forEach((c, idx) => {
+            let val = c.cost;
+            if (c.type === 'Army') val += 5;
+            if (val > bestVal) {
+              bestVal = val;
+              bestIdx = idx;
+            }
+          });
+          const chosenCard = cardsToChoose[bestIdx];
+
+          winner.deck.splice(-cardsToChoose.length);
+
+          chosenCard.location = 'HAND';
+          winner.hand.push(chosenCard);
+          addLog(state, `🃏 Elouith Battle ability: Selected and added ${chosenCard.name} to hand.`, winnerId);
+
+          cardsToChoose.forEach((c, idx) => {
+            if (idx !== bestIdx) {
+              c.location = 'HAND';
+              winner.deck.unshift(c);
+            }
+          });
+        }
+      } else {
+        addLog(state, `⚠️ Elouith Battle ability: Deck is empty, no cards to search.`);
+      }
+      break;
+    }
+    case 'Iridial': {
+      // Battle: Remove all damage from a target unit.
+      const friendlyUnits = winner.hq.filter(u => u.type === 'Army' || u.type === 'Warlord');
+      const damagedUnits = friendlyUnits.filter(u => u.damage > 0);
+      if (damagedUnits.length > 0) {
+        const targetUnit = [...damagedUnits].sort((a, b) => b.damage - a.damage)[0];
+        targetUnit.damage = 0;
+        addLog(state, `😇 Iridial Battle ability: Fully healed friendly unit ${targetUnit.name} (removed all damage).`, winnerId);
+      } else {
+        addLog(state, ` Iridial Battle ability: No damaged friendly units in play to heal.`);
+      }
+      break;
+    }
+    case 'Osus IV': {
+      // Battle: Take 1 [RESOURCE] from your opponent.
+      if (opponent.resources > 0) {
+        opponent.resources -= 1;
+        winner.resources += 1;
+        addLog(state, `💰 Osus IV Battle ability: Took 1 Resource from opponent!`, winnerId);
+      } else {
+        addLog(state, `💰 Osus IV Battle ability: Opponent has no resources to steal.`);
+      }
+      break;
+    }
+    case 'Carnath': {
+      // Battle: Trigger the Battle ability of another planet in play.
+      const otherPlanets = state.planets.filter(p => p.id !== planet.id && !p.capturedBy);
+      if (otherPlanets.length > 0) {
+        const targetPlanet = otherPlanets[0];
+        addLog(state, ` Carnath Battle ability: Chained Battle trigger onto planet ${targetPlanet.name}!`, winnerId);
+        triggerPlanetBattleAbility(state, winnerId, targetPlanet);
+      } else {
+        addLog(state, ` Carnath Battle ability: No other uncaptured planets in play to trigger.`);
+      }
+      break;
+    }
+    case 'Tarrus': {
+      // Battle: If you control fewer units than your opponent, gain 3[RESOURCE] or draw 3 cards.
+      const myUnits = winner.hq.filter(u => u.type === 'Army' || u.type === 'Warlord').length;
+      const opUnits = opponent.hq.filter(u => u.type === 'Army' || u.type === 'Warlord').length;
+      if (myUnits < opUnits) {
+        if (winner.resources < 3) {
+          winner.resources += 3;
+          addLog(state, `🎁 Tarrus Battle ability: Gained +3 Resources (fewer units than opponent).`, winnerId);
+        } else {
+          drawCardsForPlayer(state, winnerId, 3);
+          addLog(state, `🎁 Tarrus Battle ability: Drew 3 cards (fewer units than opponent).`, winnerId);
+        }
+      } else {
+        addLog(state, ` Tarrus Battle ability: Not fewer units than opponent (${myUnits} vs ${opUnits}). Trigger failed.`);
+      }
+      break;
+    }
+    case 'Barlus': {
+      // Battle: Discard 1 card at random from your opponent's hand.
+      if (opponent.hand.length > 0) {
+        const randIdx = Math.floor(Math.random() * opponent.hand.length);
+        const discarded = opponent.hand.splice(randIdx, 1)[0];
+        discarded.location = 'DISCARD';
+        opponent.discard.push(discarded);
+        addLog(state, `💥 Barlus Battle ability: Discarded random card ${discarded.name} from opponent's hand.`, winnerId);
+      } else {
+        addLog(state, ` Barlus Battle ability: Opponent has no cards in hand.`);
+      }
+      break;
+    }
+    case "Y'varn": {
+      // Battle: Each player puts a unit into play from his hand at his HQ.
+      [winnerId, opponentId].forEach(pId => {
+        const pState = state.players[pId];
+        const unitsInHand = pState.hand.filter(c => c.type === 'Army');
+        if (unitsInHand.length > 0) {
+          const bestUnit = [...unitsInHand].sort((a, b) => b.cost - a.cost)[0];
+          const bestIdx = pState.hand.findIndex(u => u.instanceId === bestUnit.instanceId);
+          if (bestIdx !== -1) {
+            pState.hand.splice(bestIdx, 1);
+            bestUnit.location = 'HQ';
+            pState.hq.push(bestUnit);
+            addLog(state, `🚀 Y'varn Battle ability: Deployed ${bestUnit.name} from hand directly to HQ for free!`, pId);
+          }
+        } else {
+          addLog(state, ` Y'varn Battle ability: No army units in hand to deploy for player ${pId}.`);
+        }
+      });
+      break;
+    }
+    default:
+      addLog(state, `🪐 Battle ability for ${planet.name} is not defined or has no effect.`);
+      break;
+  }
+};
+
+const capturePlanet = (state: GameState, winnerId: string, planetIdx: number, triggerAbility: boolean) => {
   const planet = state.planets[planetIdx];
   planet.capturedBy = winnerId;
   state.players[winnerId].victoryDisplay.push(planet);
   addLog(state, `🚩 Victory! ${state.players[winnerId].faction} captures planet ${planet.name}!`);
+
+  if (triggerAbility) {
+    triggerPlanetBattleAbility(state, winnerId, planet);
+  } else {
+    addLog(state, `🔇 Player chose not to trigger the Battle ability of ${planet.name}.`, winnerId);
+  }
 
   // Move winner units at that planet back to HQ!
   const friendlyUnits = getUnitsAtPlanet(state, planet.id).filter(u => u.controllerId === winnerId);
@@ -963,30 +1109,31 @@ const capturePlanet = (state: GameState, winnerId: string, planetIdx: number) =>
     }
   });
 
-  // Splicing removes the planet from active list
-  state.planets.splice(planetIdx, 1);
+  // Check shared planet victory: if 3 symbols of same type are collected
+  checkPlanetSymbolVictory(state, winnerId);
+};
 
-  // Draw a planet from the planet deck to replace the captured one if any left
-  if (state.planetDeck && state.planetDeck.length > 0) {
-    const newPlanet = state.planetDeck.shift();
-    if (newPlanet) {
-      state.planets.push(newPlanet);
-      addLog(state, `🪐 A new sector has emerged from the planet deck: ${newPlanet.name}!`);
+export const resolvePlanetBattleAbilityChoice = (state: GameState, choice: boolean) => {
+  const pending = state.pendingPlanetBattleAbilityTrigger;
+  if (!pending) return;
+
+  const planetIdx = state.planets.findIndex(p => p.id === pending.planetId);
+  if (planetIdx !== -1) {
+    const planet = state.planets[planetIdx];
+    if (planet.isFirstPlanet) {
+      capturePlanet(state, pending.winnerId, planetIdx, choice);
+    } else {
+      if (choice) {
+        triggerPlanetBattleAbility(state, pending.winnerId, planet);
+      } else {
+        addLog(state, `🔇 Player chose not to trigger the Battle ability of ${planet.name}.`, pending.winnerId);
+      }
     }
   }
 
-  // Recalculate remaining planets index and set the new index 0 as the first planet
-  state.planets.forEach((p, idx) => {
-    p.index = idx;
-    p.isFirstPlanet = (idx === 0);
-  });
-
-  if (state.planets[0]) {
-    addLog(state, `🚨 New First Planet of the galaxy is: ${state.planets[0].name}!`);
-  }
-
-  // Check shared planet victory: if 3 symbols of same type are collected
-  checkPlanetSymbolVictory(state, winnerId);
+  state.pendingPlanetBattleAbilityTrigger = undefined;
+  state.combat.wasPlanetSplicedInResolution = false; // captured planet stays until HQ phase
+  state.combatPlanetAwaitingAcknowledgement = true;
 };
 
 const checkPlanetSymbolVictory = (state: GameState, playerId: string) => {
@@ -1195,6 +1342,13 @@ export const resolveShieldCard = (state: GameState, playerId: string, shieldCard
     }
   }
 
+  // Restore activePlayerId to the original attacker so advanceCombatSequence alternates correctly
+  const attacker = getUnitsAtPlanet(state, targetPlanet.id).find(u => u.instanceId === pending.attackerId) ||
+                   Object.values(state.players).flatMap(p => p.hq).find(u => u.instanceId === pending.attackerId);
+  if (attacker) {
+    state.activePlayerId = attacker.controllerId;
+  }
+
   // Resolve Area Effect splash damage before clearing pending damage
   resolveAreaEffectSplash(state, pending);
 
@@ -1236,7 +1390,12 @@ const advanceCombatSequence = (state: GameState) => {
     state.combat.subPhase = 'RETREAT';
     // Initiative leader gets first retreat option
     state.activePlayerId = getCombatInitiativePlayer(state, planet.id);
-    addLog(state, `🏳️ Combat round ended. Players may choose to retreat exhausted forces back to HQ.`);
+
+    // Tabletop rule: All units at the active combat planet ready simultaneously before retreat windows open!
+    units.forEach(u => u.isExhausted = false);
+
+    addLog(state, `🔄 All units at the sector ready simultaneously. Sequential retreat windows are now open!`);
+    addLog(state, `🏳️ ${state.players[state.activePlayerId].faction} gets the first retreat opportunity.`);
   }
 };
 
@@ -1244,6 +1403,38 @@ export const passCombatAction = (state: GameState, playerId: string) => {
   if (state.activePlayerId !== playerId) return;
   addLog(state, `⏮️ ${state.players[playerId].faction} passed their combat action.`);
   advanceCombatSequence(state);
+};
+
+
+// Active Turn Warlord Retreat
+export const retreatWarlordActiveTurn = (state: GameState, playerId: string): boolean => {
+  const planet = state.planets[state.combat.activePlanetIndex];
+  const player = state.players[playerId];
+  const warlord = player.hq.find(u => u.type === 'Warlord');
+
+  if (!warlord || warlord.isExhausted) {
+    addLog(state, `⚠️ Warlord is already exhausted or not found! Cannot retreat.`, playerId);
+    return false;
+  }
+
+  // Verify Warlord is at the active combat planet
+  const isCommitted = state.warlordCommitments[playerId] === state.combat.activePlanetIndex;
+  const isPresent = getUnitsAtPlanet(state, planet.id).some(u => u.instanceId === warlord.instanceId);
+  if (!isCommitted && !isPresent) {
+    addLog(state, `⚠️ Warlord is not at the active planet to retreat.`, playerId);
+    return false;
+  }
+
+  // Warlord exhausts to retreat
+  warlord.location = 'HQ';
+  warlord.locationId = undefined;
+  warlord.isExhausted = true;
+
+  addLog(state, `🏃 ${warlord.name} exhausts to retreat to HQ, consuming the combat turn.`, playerId);
+
+  // Alternate turn to opponent
+  advanceCombatSequence(state);
+  return true;
 };
 
 // Retreat Unit
@@ -1257,6 +1448,23 @@ export const retreatUnitFromCombat = (state: GameState, playerId: string, unitIn
     unit.locationId = undefined;
     unit.isExhausted = true; // Retreated forces return exhausted
     addLog(state, `🏳️ ${unit.name} retreats back to safety of the HQ orbit.`, playerId);
+  }
+};
+
+// Complete Player Retreat Window
+export const completePlayerRetreatWindow = (state: GameState, playerId: string) => {
+  const planet = state.planets[state.combat.activePlanetIndex];
+  const initiativePlayerId = getCombatInitiativePlayer(state, planet.id);
+
+  if (playerId === initiativePlayerId) {
+    // First player (initiative) finished their window. Now alternate to the second player!
+    const opponentId = playerId === 'player-1' ? 'ai-1' : 'player-1';
+    state.activePlayerId = opponentId;
+    addLog(state, `🏳️ ${state.players[opponentId].faction} gets the next retreat opportunity.`);
+  } else {
+    // Second player finished their window. Both players have resolved their retreat windows!
+    // Now complete the combat round and check if combat continues or finishes.
+    completeCombatRoundAndReady(state);
   }
 };
 
@@ -1276,29 +1484,37 @@ export const completeCombatRoundAndReady = (state: GameState) => {
     state.combat.unitsAttackedThisRound = [];
     state.activePlayerId = getCombatInitiativePlayer(state, planet.id);
     addLog(state, `🔄 Starting Combat Round 2 at ${planet.name}. All units readied!`);
-  } else {
-    // Battle ended!
-    let winnerId = '';
-    if (smRemaining) winnerId = 'player-1';
-    if (orksRemaining) winnerId = 'ai-1';
-
-    let didSplice = false;
-    if (winnerId) {
-      addLog(state, `🏅 Combat resolved! ${state.players[winnerId].faction} wins the battle of ${planet.name}.`);
-      if (planet.isFirstPlanet) {
-        capturePlanet(state, winnerId, planetIdx);
-        didSplice = true;
-      }
-    } else {
-      addLog(state, `💀 Mutual destruction at ${planet.name}. No survivors.`);
-    }
-
-    // Pause for manual confirmation!
-    state.combat.wasPlanetSplicedInResolution = didSplice;
-    state.combatPlanetAwaitingAcknowledgement = true;
+    return;
   }
-};
 
+  // Battle ended!
+  let winnerId = '';
+  if (smRemaining && !orksRemaining) winnerId = 'player-1';
+  if (orksRemaining && !smRemaining) winnerId = 'ai-1';
+
+  if (winnerId) {
+    addLog(state, `🏅 Combat resolved! ${state.players[winnerId].faction} wins the battle of ${planet.name}.`);
+    
+    if (winnerId === 'player-1') {
+      // Prompt for Battle ability trigger choice!
+      state.pendingPlanetBattleAbilityTrigger = { planetId: planet.id, winnerId: 'player-1' };
+      return;
+    } else {
+      // AI automatically triggers Battle ability
+      if (planet.isFirstPlanet) {
+        capturePlanet(state, winnerId, planetIdx, true);
+      } else {
+        triggerPlanetBattleAbility(state, winnerId, planet);
+      }
+    }
+  } else {
+    addLog(state, `💀 Mutual destruction at ${planet.name}. No survivors.`);
+  }
+
+  // Pause for manual confirmation!
+  state.combat.wasPlanetSplicedInResolution = false; // captured planet stays until HQ phase
+  state.combatPlanetAwaitingAcknowledgement = true;
+};
 export const manualAcknowledgeCombatPlanet = (state: GameState) => {
   state.combatPlanetAwaitingAcknowledgement = false;
   const didSplice = state.combat.wasPlanetSplicedInResolution || false;
@@ -1314,6 +1530,41 @@ export const manualAcknowledgeCombatPlanet = (state: GameState) => {
 export const startHqPhase = (state: GameState) => {
   state.phase = 'HQ';
   addLog(state, `🏠 Phase transition: HQ MAINTENANCE begins.`);
+
+  // Handle captured planet removal and replacement from deck
+  const activePlanets = state.planets.filter(p => !p.capturedBy);
+  const capturedCount = state.planets.length - activePlanets.length;
+  
+  if (capturedCount > 0) {
+    state.planets.forEach(p => {
+      if (p.capturedBy) {
+        addLog(state, `🪐 Captured planet ${p.name} is removed from the active row.`);
+      }
+    });
+
+    const drawnPlanets: Planet[] = [];
+    for (let i = 0; i < capturedCount; i++) {
+      if (state.planetDeck && state.planetDeck.length > 0) {
+        const newPlanet = state.planetDeck.shift();
+        if (newPlanet) {
+          drawnPlanets.push(newPlanet);
+          addLog(state, `🪐 A new sector has emerged from the planet deck: ${newPlanet.name}!`);
+        }
+      }
+    }
+    
+    state.planets = [...activePlanets, ...drawnPlanets];
+    
+    // Re-index planets
+    state.planets.forEach((p, idx) => {
+      p.index = idx;
+      p.isFirstPlanet = (idx === 0);
+    });
+    
+    if (state.planets.length > 0) {
+      addLog(state, `🚨 New First Planet of the galaxy is: ${state.planets[0].name}!`);
+    }
+  }
 
   // Ready all exhausted units across HQ and Planets
   Object.values(state.players).forEach(p => {
@@ -1445,8 +1696,8 @@ export const runAiTurn = (state: GameState) => {
     }
     else if (state.combat.subPhase === 'RETREAT') {
       // Heuristic: AI retreats if warlord has high damage (>3) or standard unit would die next round
-      // For simplicity, AI passes retreat choices
-      completeCombatRoundAndReady(state);
+      // For simplicity, AI passes retreat choices and completes its window
+      completePlayerRetreatWindow(state, 'ai-1');
     }
     else {
       advanceCombatSequence(state);

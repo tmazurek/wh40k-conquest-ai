@@ -103,4 +103,8 @@ export interface GameState {
   warlordCommitmentsPlaced?: boolean;
   commandStrugglesResolved?: boolean;
   combatPlanetAwaitingAcknowledgement?: boolean;
+  pendingPlanetBattleAbilityTrigger?: {
+    planetId: string;
+    winnerId: string;
+  };
 }

@@ -10,11 +10,11 @@ Here is the prioritized list of engine and rules gaps to implement next:
 - **Programmatic Keywords**:
   - **`Area Effect (X)`**: ✅ Fully implemented in combat resolution.
   - **`Mobile`**: Allow eligible units to shift adjacent to other planets at the start of the combat phase.
-  - planets has in correct values for resources and cards awards when won 
+  - **Planet Command Rewards**: ✅ Corrected Tarrus (1, 1 command rewards and Material/Strongpoint symbols) and verified standard starting planet configurations against core-set rules.
 - **AI Upgrades**: Teach the Heuristic AI to compute value for Area Effect placement and Mobile maneuvers.
 
 ### 🟡 Medium Priority
-- **Automated Planet Battle Abilities**: Transition planet battle abilities from text-only descriptions to automated engine effects upon capture.
+- **Automated Planet Battle Abilities**: ✅ Fully automated on capture for all standard planets (Elouith, Iridial, Osus IV, Carnath, Tarrus, Barlus, Y'varn).
 - **Extended Deck Pools**: Incorporate Astra Militarum, Eldar, Chaos, and Dark Eldar signature squads and cards into custom AI and player decks.
 
 ### 🟢 Low Priority
@@ -410,31 +410,46 @@ If defender has **no** shield cards in hand → damage **auto-applies** (no wind
 
 ### 8.7 Retreat step
 
-- **First player** chooses first (active at start of retreat).
-- **Retreat:** all that player’s units + warlord if present move to **HQ** (ready).
-- **Pass (stay):** keep forces on planet.
-- If player has **no presence**, auto-pass.
-- After both chose: if still **contested** (both sides present) → new combat round (ready all on planet, back to ranged).
-- If one side cleared → planet resolved, advance to next planet.
+At the end of a combat round (when all units at the planet are exhausted):
 
-### 8.8 End of combat phase
+1. **Simultaneous Readying**: All units at the active planet ready simultaneously.
+2. **Sequential Retreat Windows**: Starting with the initiative player, each player gets exactly one retreat opportunity:
+   - Move **any number of your units** (including Warlord) from the planet to your **HQ**.
+   - Units arriving at HQ are **exhausted**.
+3. **Contested Check**: After both players resolve their retreat windows, if the planet is still contested (both players have at least one unit present), a new combat round begins (starting with Melee or Ranged).
 
-When all planets in order resolved:
+Additionally, **Warlord Retreat** is permitted during a player's combat turn in Melee or Ranged steps:
+- A Warlord may **exhaust** to retreat to HQ as their combat action instead of making an attack.
+- The Warlord moves to HQ exhausted, and this immediately **consumes the player's combat turn**, passing action to the opponent.
+- Regular units cannot retreat during active combat turns.
 
-1. `combat.step = done`
-2. Both players must **pass** (combat finish) to allow **END_PHASE**
-3. On END_PHASE: **apply captures** (§14), **check victory**
+### 8.8 Battle Resolution & Planet Abilities
+
+Combat occurs at the **First Planet**, and at any other planet where at least one **Warlord** is present at the start of the Combat Phase. 
+
+Whenever a battle at a planet ends (when one side is wiped out or mutual destruction occurs):
+1. **Declare Winner**: The player with remaining units/warlords present at the sector wins the battle.
+2. **Trigger Planet Battle Ability**: The winner triggers the planet's **Battle** ability:
+   - For the human player, the UI prompts a manual choice (`Yes` to trigger, `No` to skip).
+   - For the AI, the Battle ability triggers automatically.
+3. **Capture and Relocation (First Planet Only)**:
+   - If the battle occurred at the First Planet, it is marked as captured (`capturedBy`) by the winner.
+   - The winner's units at that planet relocate to HQ ready, and remaining opposing units are discarded.
+   - The captured planet remains in the active sectors row visually until the Headquarters Phase (§9).
+4. **Transition (Non-First Planets)**:
+   - If the battle occurred at another planet where Warlords were present, the planet is **not** captured.
+   - All surviving units remain at that planet, and combat transitions to the next eligible planet.
 
 ---
 
 ## 9. Headquarters phase
 
-**Runs automatically** when entering HQ (before alternating passes):
+**Runs automatically** when entering HQ (before upkeep and upkeep actions):
 
-1. **Warlords** → HQ (`planet_index = None`, ready).
+1. **Captured Planet Removal & Replacement**: Any planets captured during combat are removed (spliced out) from the active sectors row. If there are planets in the planet deck, a new planet is drawn and appended to the end of the planets row. All remaining active planets are re-indexed, and index 0 is set as the new First Planet.
 2. **Ready** all exhausted cards (units, warlords, supports in HQ).
-3. Each player **draw 2**.
-4. Each player **gain 1 resource** (from deck).
+3. Each player **draws 2** cards.
+4. Each player **gains 4 resources** (standard tabletop maintenance upkeep).
 
 Then players alternate **pass** until both passed → **END_PHASE** → end round (§10).
 
@@ -523,41 +538,33 @@ Default row (index → name):
 | 3 | Carnath | 1 | 1 | Tech, Strongpoint |
 | 4 | Tarrus | 1 | 1 | Material, Strongpoint |
 
-Planet **battle abilities** in `text` are **not executed** in MVP.
+Planet **battle abilities** are triggered immediately upon combat resolution at **any** active planet (supporting Elouith, Iridial, Osus IV, Carnath, Tarrus, Barlus, and Y'varn), with optional activation prompts for the human player and automated execution for the AI.
 
 ---
 
 ## 14. Capture and First Planet
 
-### 14.1 End of combat capture
+### 14.1 End of Combat Capture
 
-For each **non-captured** planet:
+When a player wins a battle at the first planet:
+- The planet is marked as captured by the winner (`capturedBy`).
+- The player's victory display claims the planet (adding its symbols toward their victory condition).
+- The winner's units at the captured planet are returned to HQ, and the opponent's remaining units at that planet are discarded.
+- The planet remains in the active sectors row visually. It is **not** immediately removed, replaced, or re-indexed.
 
-- If **sole presence** (one player has presence, other does not) → set `controller` to that player.
+### 14.2 Optional Battle Abilities Prompt
 
-Does not remove planet from row (except First Planet flow below).
+Immediately upon winning combat at any planet (the First Planet or planets with Warlords):
+- If the victor is the human player, they are prompted via the UI to choose whether to trigger the planet's **Battle** ability (Yes/No).
+- If the victor is the AI, the Battle ability triggers automatically.
+- For non-First planets, triggering the Battle ability does not capture the planet; surviving forces remain at the planet, and combat transitions to the next eligible planet.
 
-### 14.2 First Planet special case
+### 14.3 Headquarters Phase Removal & Replenishment
 
-When **current First Planet** (index = `first_planet_index`) has:
-
-- A `controller` after capture logic, AND
-- Controller has **sole presence**
-
-Then:
-
-1. Winner **claims one symbol type** present on that planet’s `symbols[]`.
-2. Add to `symbol_victories[choice]` count = how many of that symbol appear on planet.
-3. Planet marked `captured = true`, units/warlords returned to HQ, removed from active row.
-4. **First Planet token** advances to next uncaptured planet.
-
-**If multiple symbol types** on planet → game pauses until winner chooses (`CLAIM_FIRST_PLANET_SYMBOL`).
-
-**If only one symbol type** → auto-claim.
-
-**Example:** Elouith has `[Tech]` only → +1 Tech toward victory.
-
-**Example:** Iridial has `[Strongpoint, Tech, Material]` → winner picks one category for +1 point.
+At the start of the next Headquarters Phase:
+- All captured planets are spliced out from the active sectors row.
+- If there are face-down planets remaining in the planet deck, a new planet is drawn and pushed onto the end of the row.
+- The first planet index 0 is re-assigned as `isFirstPlanet`.
 
 ---
 
@@ -794,7 +801,7 @@ def combat_phase(state):
 | Warlord defeat victory | ✅ |
 | Promethium Mine (start of deploy) | ✅ |
 | HQ draw 2 + 1 resource | ✅ (simplified vs full rules) |
-| Planet battle abilities | ❌ text only |
+| Planet battle abilities | ✅ fully automated on capture |
 | Full interrupt/reaction priority system | ❌ simplified triggers |
 | Events with real effects | ✅ (Major SM/Ork/Astra events active) |
 | Area Effect, Mobile, Armorbane | ⚠️ (Area Effect and Armorbane active; Mobile text only) |
