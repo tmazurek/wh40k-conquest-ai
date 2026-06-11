@@ -32,13 +32,41 @@ import CardDisplay from './components/CardDisplay';
 import PlanetDisplay from './components/PlanetDisplay';
 import LogPanel from './components/LogPanel';
 import RulesPanel from './components/RulesPanel';
+import { loadUserDecks } from './engine/deckLoader';
 import { 
   Plus, Swords, Shield, Zap, RefreshCw, Bot, HelpCircle, ArrowRight,
   Sparkles, Coins, Trophy, Skull, Info, LogOut, Globe
 } from 'lucide-react';
 
 export default function App() {
-  const [gameState, setGameState] = useState<GameState>(() => initGame(77));
+  const userDecks = useMemo(() => loadUserDecks(), []);
+  
+  const initialP1DeckName = useMemo(() => {
+    const d = userDecks.find(d => d.filename.startsWith('CatoCore'));
+    return d ? d.name : 'Default Space Marines';
+  }, [userDecks]);
+  
+  const initialAiDeckName = useMemo(() => {
+    const d = userDecks.find(d => d.filename.startsWith('NazdregCore'));
+    return d ? d.name : 'Default Orks';
+  }, [userDecks]);
+
+  const [selectedP1DeckName, setSelectedP1DeckName] = useState<string>(initialP1DeckName);
+  const [selectedAiDeckName, setSelectedAiDeckName] = useState<string>(initialAiDeckName);
+
+  const [gameState, setGameState] = useState<GameState>(() => {
+    const decks = loadUserDecks();
+    const p1DefaultDeck = decks.find(d => d.filename.startsWith('CatoCore'));
+    const aiDefaultDeck = decks.find(d => d.filename.startsWith('NazdregCore'));
+    return initGame(
+      77,
+      p1DefaultDeck?.deckList,
+      p1DefaultDeck?.warlordId || undefined,
+      aiDefaultDeck?.deckList,
+      aiDefaultDeck?.warlordId || undefined
+    );
+  });
+
   const [selectedHandCardId, setSelectedHandCardId] = useState<string | null>(null);
   const [selectedHQCardId, setSelectedHQCardId] = useState<string | null>(null);
   const [selectedAttackerId, setSelectedAttackerId] = useState<string | null>(null);
@@ -52,7 +80,18 @@ export default function App() {
   const resetGame = () => {
     const nextSeed = Math.floor(Math.random() * 100);
     setSeed(nextSeed);
-    setGameState(initGame(nextSeed));
+    
+    const p1Deck = userDecks.find(d => d.name === selectedP1DeckName);
+    const aiDeck = userDecks.find(d => d.name === selectedAiDeckName);
+    
+    setGameState(initGame(
+      nextSeed,
+      p1Deck?.deckList,
+      p1Deck?.warlordId || undefined,
+      aiDeck?.deckList,
+      aiDeck?.warlordId || undefined
+    ));
+    
     setSelectedHandCardId(null);
     setSelectedHQCardId(null);
     setSelectedAttackerId(null);
@@ -339,6 +378,61 @@ export default function App() {
             <span className="font-bold text-gray-350 uppercase text-[9px] tracking-wider">
               {gameState.firstPlayerId === 'player-1' ? '👤 Player' : '🤖 Ork AI'}
             </span>
+          </div>
+        </div>
+
+        {/* Deck Selectors */}
+        <div className="flex items-center gap-3 font-mono text-xs max-lg:hidden">
+          <div className="flex flex-col bg-white/5 border border-white/10 rounded px-2.5 py-1">
+            <span className="text-[7px] text-gray-500 uppercase tracking-widest leading-none mb-0.5">Player 1 Deck</span>
+            <select
+              value={selectedP1DeckName}
+              onChange={(e) => {
+                const newDeckName = e.target.value;
+                setSelectedP1DeckName(newDeckName);
+                const p1Deck = userDecks.find(d => d.name === newDeckName);
+                const aiDeck = userDecks.find(d => d.name === selectedAiDeckName);
+                setGameState(initGame(
+                  seed,
+                  p1Deck?.deckList,
+                  p1Deck?.warlordId || undefined,
+                  aiDeck?.deckList,
+                  aiDeck?.warlordId || undefined
+                ));
+              }}
+              className="bg-transparent text-amber-500 font-bold text-[10px] focus:outline-none cursor-pointer"
+            >
+              <option className="bg-[#0a0a0c] text-amber-500" value="Default Space Marines">Default Space Marines</option>
+              {userDecks.map(d => (
+                <option className="bg-[#0a0a0c] text-white" key={d.name} value={d.name}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col bg-white/5 border border-white/10 rounded px-2.5 py-1">
+            <span className="text-[7px] text-gray-500 uppercase tracking-widest leading-none mb-0.5">AI Deck</span>
+            <select
+              value={selectedAiDeckName}
+              onChange={(e) => {
+                const newDeckName = e.target.value;
+                setSelectedAiDeckName(newDeckName);
+                const p1Deck = userDecks.find(d => d.name === selectedP1DeckName);
+                const aiDeck = userDecks.find(d => d.name === newDeckName);
+                setGameState(initGame(
+                  seed,
+                  p1Deck?.deckList,
+                  p1Deck?.warlordId || undefined,
+                  aiDeck?.deckList,
+                  aiDeck?.warlordId || undefined
+                ));
+              }}
+              className="bg-transparent text-red-400 font-bold text-[10px] focus:outline-none cursor-pointer"
+            >
+              <option className="bg-[#0a0a0c] text-red-400" value="Default Orks">Default Orks</option>
+              {userDecks.map(d => (
+                <option className="bg-[#0a0a0c] text-white" key={d.name} value={d.name}>{d.name}</option>
+              ))}
+            </select>
           </div>
         </div>
 

@@ -50,7 +50,13 @@ export const addLog = (state: GameState, message: string, playerId?: string): vo
 };
 
 // Initialize Game
-export const initGame = (seed: number = 42): GameState => {
+export function initGame(
+  seed = 77,
+  p1DeckList?: string[],
+  p1WarlordId?: string,
+  aiDeckList?: string[],
+  aiWarlordId?: string
+): GameState {
   const p1Id = 'player-1';
   const aiId = 'ai-1';
 
@@ -65,17 +71,22 @@ export const initGame = (seed: number = 42): GameState => {
     p.isFirstPlanet = (idx === 0);
   });
 
+  const finalP1WarlordId = p1WarlordId || 'sm-cato';
+  const finalAiWarlordId = aiWarlordId || 'ork-nazdreg';
+  const finalP1DeckList = p1DeckList || DECK_SM;
+  const finalAiDeckList = aiDeckList || DECK_ORK;
+
   // Prepare randomized decks
-  const smDeckRaw = DECK_SM.map(cid => createCardInstance(cid, p1Id));
-  const orkDeckRaw = DECK_ORK.map(cid => createCardInstance(cid, aiId));
+  const smDeckRaw = finalP1DeckList.map(cid => createCardInstance(cid, p1Id));
+  const orkDeckRaw = finalAiDeckList.map(cid => createCardInstance(cid, aiId));
 
   const gameRng = new SeededRandom(seed);
   const smDeck = shuffle(smDeckRaw, () => gameRng.next());
   const orkDeck = shuffle(orkDeckRaw, () => gameRng.next());
 
   // Warlords starting in HQ
-  const catoWarlord = { ...createCardInstance('sm-cato', p1Id), location: 'HQ' as const };
-  const nazdregWarlord = { ...createCardInstance('ork-nazdreg', aiId), location: 'HQ' as const };
+  const catoWarlord = { ...createCardInstance(finalP1WarlordId, p1Id), location: 'HQ' as const };
+  const nazdregWarlord = { ...createCardInstance(finalAiWarlordId, aiId), location: 'HQ' as const };
 
   const p1StartingResources = catoWarlord.startingResources ?? 7;
   const p1StartingCards = catoWarlord.startingCards ?? 7;
@@ -94,7 +105,7 @@ export const initGame = (seed: number = 42): GameState => {
     players: {
       [p1Id]: {
         id: p1Id,
-        faction: 'Space Marines',
+        faction: CARD_DB[finalP1WarlordId]?.faction || 'Space Marines',
         resources: p1StartingResources,
         hand: [],
         deck: smDeck,
@@ -104,7 +115,7 @@ export const initGame = (seed: number = 42): GameState => {
       },
       [aiId]: {
         id: aiId,
-        faction: 'Orks',
+        faction: CARD_DB[finalAiWarlordId]?.faction || 'Orks',
         resources: aiStartingResources,
         hand: [],
         deck: orkDeck,
@@ -131,8 +142,8 @@ export const initGame = (seed: number = 42): GameState => {
   };
 
   addLog(state, '🎯 Warhammer 40k: Conquest AI Trainer Started!');
-  addLog(state, '🛡️ Player 1 command: Space Marines (Captain Cato Sicarius)');
-  addLog(state, '🪓 AI command: Orks (Nazdreg)');
+  addLog(state, `🛡️ Player 1 command: ${state.players[p1Id].faction} (${catoWarlord.name})`);
+  addLog(state, `🪓 AI command: ${state.players[aiId].faction} (${nazdregWarlord.name})`);
 
   // Draw starting hand based on Warlord specifications
   drawCardsForPlayer(state, p1Id, p1StartingCards);
