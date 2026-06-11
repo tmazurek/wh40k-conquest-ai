@@ -116,9 +116,11 @@ interface CardDisplayProps {
   isSelected?: boolean;
   canPlay?: boolean;
   size?: 'sm' | 'md' | 'mini' | 'lg';
+  adjustedAttack?: number;
+  adjustedHp?: number;
 }
 
-export default function CardDisplay({ card, onClick, isSelected, canPlay = true, size = 'md' }: CardDisplayProps) {
+export default function CardDisplay({ card, onClick, isSelected, canPlay = true, size = 'md', adjustedAttack, adjustedHp }: CardDisplayProps) {
   const isInstance = 'instanceId' in card;
   const instance = isInstance ? (card as CardInstance) : null;
   const [viewMode, setViewMode] = useState<'image' | 'text'>('image');
@@ -305,13 +307,13 @@ export default function CardDisplay({ card, onClick, isSelected, canPlay = true,
                 }`}>
                 <div className="text-center group" title="Attack Strength">
                   <span className={`text-[#888899] uppercase block font-sans tracking-tight ${size === 'lg' ? 'text-[9px]' : 'text-[7.5px]'}`}>ATK</span>
-                  <span className={`font-bold text-red-400 ${size === 'lg' ? 'text-base' : ''}`}>{card.attack}</span>
+                  <span className={`font-bold text-red-400 ${size === 'lg' ? 'text-base' : ''}`}>{adjustedAttack !== undefined ? adjustedAttack : card.attack}</span>
                 </div>
                 <div className="border-r border-white/5 h-4" />
                 <div className="text-center" title="Hit Points (Max HP)">
                   <span className={`text-[#888899] uppercase block font-sans tracking-tight ${size === 'lg' ? 'text-[9px]' : 'text-[7.5px]'}`}>HP</span>
                   <span className={`font-bold text-green-400 ${size === 'lg' ? 'text-base' : ''}`}>
-                    {instance ? `${instance.hp - instance.damage}/${instance.hp}` : card.hp}
+                    {instance ? `${(adjustedHp !== undefined ? adjustedHp : instance.hp) - instance.damage}/${adjustedHp !== undefined ? adjustedHp : instance.hp}` : card.hp}
                   </span>
                 </div>
                 <div className="border-r border-white/5 h-4" />
@@ -327,15 +329,21 @@ export default function CardDisplay({ card, onClick, isSelected, canPlay = true,
             )}
 
             {/* Keywords / Traits tags */}
-            {size !== 'mini' && size !== 'sm' && (card.traits.length > 0 || card.keywords.length > 0) ? (
-              <div className="flex flex-wrap gap-1.5 mb-3 z-10 font-heading">
+            {(card.traits.length > 0 || card.keywords.length > 0) ? (
+              <div className={`flex flex-wrap gap-1 z-10 font-heading ${
+                size === 'mini' ? 'mb-0.5' : size === 'sm' ? 'mb-1' : 'mb-3'
+              }`}>
                 {card.traits.slice(0, 2).map(t => (
-                  <span key={t} className={`bg-white/5 border border-white/5 text-gray-450 px-1.5 py-0.5 rounded tracking-wide ${size === 'lg' ? 'text-[11px]' : 'text-[9px]'}`}>
+                  <span key={t} className={`bg-white/5 border border-white/5 text-gray-300 rounded tracking-wide ${
+                    size === 'mini' ? 'text-[6px] px-1 py-0.1' : size === 'sm' ? 'text-[7.5px] px-1 py-0.1' : size === 'lg' ? 'text-[11px] px-1.5 py-0.5' : 'text-[9px] px-1.5 py-0.5'
+                  }`}>
                     {t}
                   </span>
                 ))}
                 {card.keywords.slice(0, 2).map(k => (
-                  <span key={k} className={`bg-yellow-500/5 border border-yellow-500/20 text-yellow-500 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${size === 'lg' ? 'text-[11px]' : 'text-[9px]'}`}>
+                  <span key={k} className={`bg-yellow-500/5 border border-yellow-550/20 text-yellow-500 font-bold rounded uppercase tracking-wider ${
+                    size === 'mini' ? 'text-[6px] px-1 py-0.1' : size === 'sm' ? 'text-[7.5px] px-1 py-0.1' : size === 'lg' ? 'text-[11px] px-1.5 py-0.5' : 'text-[9px] px-1.5 py-0.5'
+                  }`}>
                     {k}
                   </span>
                 ))}
@@ -343,12 +351,13 @@ export default function CardDisplay({ card, onClick, isSelected, canPlay = true,
             ) : null}
 
             {/* Card Rules text */}
-            {size !== 'mini' && (
-              <div className={`flex-grow text-gray-400 leading-normal z-10 font-sans italic p-1.5 bg-black/25 rounded border border-white/5 ${size === 'sm' ? 'line-clamp-2 text-[8px] tracking-tight p-0.5' : size === 'lg' ? 'text-[12px] line-clamp-5' : 'text-[9.5px] line-clamp-4'
-                }`}>
-                {card.description}
-              </div>
-            )}
+            <div className={`flex-grow text-gray-400 leading-normal z-10 font-sans italic p-1.5 bg-black/25 rounded border border-white/5 overflow-y-auto ${
+              size === 'mini' ? 'text-[7px] tracking-tight p-0.5 leading-tight max-h-[55px]' :
+              size === 'sm' ? 'text-[8px] tracking-tight p-0.5 leading-tight max-h-[70px]' :
+              size === 'lg' ? 'text-[12px] line-clamp-5' : 'text-[9.5px] line-clamp-4'
+            }`}>
+              {card.description}
+            </div>
 
             {/* Toggle back to Image view if image is locally cached/available */}
             {hasImage && (
@@ -417,6 +426,8 @@ export default function CardDisplay({ card, onClick, isSelected, canPlay = true,
             card={card}
             canPlay={canPlay}
             size="lg"
+            adjustedAttack={adjustedAttack}
+            adjustedHp={adjustedHp}
           />
         </div>
       )}

@@ -21,7 +21,11 @@ import {
   getPlacedUnitsForPlayer,
   hasWarlordAtPlanet,
   passCombatAction,
-  resolvePlanetBattleAbilityChoice
+  resolvePlanetBattleAbilityChoice,
+  deployAttachment,
+  getUnitAdjustedAttack,
+  getUnitAdjustedHp,
+  getUnitAdjustedCommand
 } from './engine/gameLogic';
 import { GameState, CardInstance, Planet } from './engine/types';
 import CardDisplay from './components/CardDisplay';
@@ -109,17 +113,17 @@ export default function App() {
     const p1Units = getUnitsAtPlanet(gameState, planet.id).filter(u => u.controllerId === 'player-1' && !u.isExhausted);
     const aiUnits = getUnitsAtPlanet(gameState, planet.id).filter(u => u.controllerId === 'ai-1' && !u.isExhausted);
 
-    let p1Command = p1Units.reduce((acc, u) => acc + u.commandIcons, 0);
-    let aiCommand = aiUnits.reduce((acc, u) => acc + u.commandIcons, 0);
+    let p1Command = p1Units.reduce((acc, u) => acc + getUnitAdjustedCommand(gameState, u), 0);
+    let aiCommand = aiUnits.reduce((acc, u) => acc + getUnitAdjustedCommand(gameState, u), 0);
 
     // HQ commitment virtual check
     if (gameState.warlordCommitments['player-1'] === planet.index) {
       const warlord = p1.hq.find(u => u.type === 'Warlord');
-      if (warlord && !warlord.isExhausted) p1Command += warlord.commandIcons;
+      if (warlord && !warlord.isExhausted) p1Command += getUnitAdjustedCommand(gameState, warlord);
     }
     if (gameState.warlordCommitments['ai-1'] === planet.index) {
       const warlord = ai.hq.find(u => u.type === 'Warlord');
-      if (warlord && !warlord.isExhausted) aiCommand += warlord.commandIcons;
+      if (warlord && !warlord.isExhausted) aiCommand += getUnitAdjustedCommand(gameState, warlord);
     }
 
     return { p1Command, aiCommand };
@@ -151,6 +155,16 @@ export default function App() {
     setGameState(prev => {
       const next = JSON.parse(JSON.stringify(prev));
       playEventCard(next, 'player-1', selectedHandCardId, targetUnitId);
+      return next;
+    });
+    setSelectedHandCardId(null);
+  };
+
+  const handleDeployAttachment = (hostUnitId: string) => {
+    if (!selectedHandCardId) return;
+    setGameState(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      deployAttachment(next, 'player-1', selectedHandCardId, hostUnitId);
       return next;
     });
     setSelectedHandCardId(null);
@@ -503,6 +517,8 @@ export default function App() {
                     handleDeclareAttackTarget={handleDeclareAttackTarget}
                     handleStartCombatClick={handleStartCombatClick}
                     handleRetreatClick={handleRetreatClick}
+                    selectedHQCardId={selectedHQCardId}
+                    setSelectedHQCardId={setSelectedHQCardId}
                   />
                 );
               })}
@@ -566,6 +582,8 @@ export default function App() {
                           card={c}
                           isSelected={isSelected}
                           onClick={() => setSelectedHQCardId(c.instanceId === selectedHQCardId ? null : c.instanceId)}
+                          adjustedAttack={c.instanceId ? getUnitAdjustedAttack(gameState, c) : undefined}
+                          adjustedHp={c.instanceId ? getUnitAdjustedHp(gameState, c) : undefined}
                         />
                         {isSelected && isSupport && !c.isExhausted && (
                           <div className="absolute inset-x-0 -bottom-1 bg-black/95 border border-purple-500/30 rounded-lg p-1.5 shadow-xl z-20 text-center animate-slide-up">
@@ -611,6 +629,8 @@ export default function App() {
                         }}
                         isSelected={selectedHandCardId === card.instanceId}
                         canPlay={canAfford}
+                        adjustedAttack={card.instanceId ? getUnitAdjustedAttack(gameState, card) : undefined}
+                        adjustedHp={card.instanceId ? getUnitAdjustedHp(gameState, card) : undefined}
                       />
 
                       {/* Quick deploy overlay buttons if hand card index is actively selected */}
@@ -665,6 +685,35 @@ export default function App() {
                               </div>
                             </div>
                           )}
+
+                          {card.type === 'Attachment' && (
+                            <div className="space-y-1">
+                              <span className="text-[8px] text-gray-400 block font-mono">Select unit to attach to:</span>
+                              <div className="flex flex-wrap gap-1 justify-center max-h-[100px] overflow-y-auto font-mono">
+                                {/* Collect all eligible units (Army and Warlord) at all planets or HQ */}
+                                {(() => {
+                                  const eligibleUnits: CardInstance[] = [];
+                                  p1.hq.forEach(u => {
+                                    if (u.type === 'Warlord') eligibleUnits.push(u);
+                                  });
+                                  gameState.planets.forEach(p => {
+                                    eligibleUnits.push(...getUnitsAtPlanet(gameState, p.id));
+                                  });
+                                  
+                                  return eligibleUnits.map(u => (
+                                    <button
+                                      key={u.instanceId}
+                                      onClick={() => handleDeployAttachment(u.instanceId)}
+                                      disabled={!canAfford}
+                                      className="px-1.5 py-0.5 bg-[#0a0a0c] hover:bg-white/10 border border-white/5 text-[8px] rounded text-gray-300 disabled:opacity-40"
+                                    >
+                                      {u.name.substring(0, 12)}
+                                    </button>
+                                  ));
+                                })()}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -681,6 +730,38 @@ export default function App() {
         {/* LOG PANEL & RULES: 3 cols broad (right margin) */}
         <div className="col-span-12 xl:col-span-3 space-y-6">
           
+          {/* ACTIVATED ABILITY WIDGET */}
+          {(() => {
+            const selectedCard = p1.hq.find(c => c.instanceId === selectedHQCardId) ||
+                                 p1.hand.find(c => c.instanceId === selectedHandCardId) ||
+                                 gameState.planets.flatMap(p => getUnitsAtPlanet(gameState, p.id)).find(c => c.instanceId === selectedHQCardId || c.instanceId === selectedHandCardId);
+            if (!selectedCard) return null;
+            
+            const hasAbility = selectedCard.id === 'sm-maxos' || selectedCard.id === 'ork-flashgitz' || selectedCard.id === 'ork-tellyporta' || selectedCard.id === 'sm-ironhalo' || selectedCard.type === 'Support';
+            if (!hasAbility) return null;
+            
+            return (
+              <div className="bg-purple-950/20 border border-purple-900/30 rounded-xl p-4 space-y-3 font-mono text-xs shadow-lg animate-fade-in text-center">
+                <div className="flex items-center justify-center gap-1.5 border-b border-purple-900/20 pb-2">
+                  <Zap className="w-4 h-4 text-purple-400 animate-pulse" />
+                  <span className="font-mono text-purple-400 tracking-wider text-[11px] font-bold uppercase">
+                    ACTIVATED ABILITY
+                  </span>
+                </div>
+                <p className="text-gray-300 text-[10px] leading-relaxed">
+                  <strong>{selectedCard.name}</strong>: {selectedCard.description}
+                </p>
+                <button
+                  onClick={() => handleExhaustSupportAbility(selectedCard.instanceId)}
+                  disabled={selectedCard.isExhausted && selectedCard.id !== 'ork-flashgitz'}
+                  className="w-full py-1.5 bg-purple-600 hover:bg-purple-700 font-bold border border-purple-750 text-white text-[10px] tracking-widest uppercase rounded transition-colors cursor-pointer"
+                >
+                  Activate Ability
+                </button>
+              </div>
+            );
+          })()}
+
           {/* DEPLOYMENT STATUS WIDGET */}
           {gameState.phase === 'DEPLOY' && (
             <div className="bg-black/50 border border-white/10 rounded-xl p-4 space-y-3 font-mono text-xs shadow-lg animate-fade-in">

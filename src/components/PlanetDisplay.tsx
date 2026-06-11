@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Planet, CardInstance, GameState } from '../engine/types';
 import { Globe, FileText, Eye, Sparkles } from 'lucide-react';
 import CardDisplay from './CardDisplay';
+import { getUnitAdjustedAttack, getUnitAdjustedHp } from '../engine/gameLogic';
 
 const CATO_SICARIUS_CARD = {
   id: 'sm-cato',
@@ -75,6 +76,8 @@ interface PlanetDisplayProps {
   handleDeclareAttackTarget: (targetId: string) => void;
   handleStartCombatClick: (attackerId: string) => void;
   handleRetreatClick: (unitInstanceId: string) => void;
+  selectedHQCardId: string | null;
+  setSelectedHQCardId: (id: string | null) => void;
 }
 
 export default function PlanetDisplay({
@@ -92,15 +95,17 @@ export default function PlanetDisplay({
   handleDeclareAttackTarget,
   handleStartCombatClick,
   handleRetreatClick,
+  selectedHQCardId,
+  setSelectedHQCardId,
 }: PlanetDisplayProps) {
   const [viewMode, setViewMode] = useState<'image' | 'text'>('image');
   const [imageError, setImageError] = useState(false);
 
   const aiWarlordInstance = gameState.players['ai-1'].hq.find(u => u.type === 'Warlord');
-  const aiWarlordHp = aiWarlordInstance ? aiWarlordInstance.hp - aiWarlordInstance.damage : 6;
+  const aiWarlordHp = aiWarlordInstance ? getUnitAdjustedHp(gameState, aiWarlordInstance) - aiWarlordInstance.damage : 6;
 
   const p1WarlordInstance = gameState.players['player-1'].hq.find(u => u.type === 'Warlord');
-  const p1WarlordHp = p1WarlordInstance ? p1WarlordInstance.hp - p1WarlordInstance.damage : 6;
+  const p1WarlordHp = p1WarlordInstance ? getUnitAdjustedHp(gameState, p1WarlordInstance) - p1WarlordInstance.damage : 6;
 
   useEffect(() => {
     setImageError(false);
@@ -210,7 +215,7 @@ export default function PlanetDisplay({
             } ${aiWarlordInstance && aiWarlordInstance.isExhausted ? 'opacity-35 cursor-not-allowed' : ''}`}
           >
             👑 Nazdreg (W)
-            <span className="text-red-400 font-bold font-mono text-[8.5px] ml-1 flex items-center">⚔️2</span>
+            <span className="text-red-400 font-bold font-mono text-[8.5px] ml-1 flex items-center">⚔️{aiWarlordInstance ? getUnitAdjustedAttack(gameState, aiWarlordInstance) : 2}</span>
             <span className="text-green-400 font-bold font-mono text-[8.5px] flex items-center">❤️{aiWarlordHp}</span>
             <span className="text-cyan-400 font-bold font-mono text-[8.5px] flex items-center">🔨2</span>
           </div>
@@ -234,8 +239,8 @@ export default function PlanetDisplay({
             title={`${u.name}: Click to elect as target`}
           >
             <span className="truncate max-w-[50px] font-medium">{u.name.split(' ').slice(-1)}</span>
-            <span className="text-red-400 font-bold font-mono text-[8.5px] flex items-center">⚔️{u.attack}</span>
-            <span className="text-green-400 font-bold font-mono text-[8.5px] flex items-center">❤️{u.hp - u.damage}</span>
+            <span className="text-red-400 font-bold font-mono text-[8.5px] flex items-center">⚔️{getUnitAdjustedAttack(gameState, u)}</span>
+            <span className="text-green-400 font-bold font-mono text-[8.5px] flex items-center">❤️{getUnitAdjustedHp(gameState, u) - u.damage}</span>
             {u.commandIcons > 0 && (
               <span className="text-cyan-400 font-bold font-mono text-[8.5px] flex items-center">🔨{u.commandIcons}</span>
             )}
@@ -389,6 +394,7 @@ export default function PlanetDisplay({
             onMouseMove={handleUnitMouseMove}
             onClick={() => {
               if (p1WarlordInstance) {
+                setSelectedHQCardId(selectedHQCardId === p1WarlordInstance.instanceId ? null : p1WarlordInstance.instanceId);
                 if (gameState.phase === 'COMBAT' && isUnderConflict && gameState.activePlayerId === 'player-1') {
                   if (gameState.combat.subPhase === 'MELEE' && !p1WarlordInstance.isExhausted) {
                     handleStartCombatClick(p1WarlordInstance.instanceId);
@@ -400,11 +406,13 @@ export default function PlanetDisplay({
             }}
             className={`flex items-center gap-1 px-1.5 py-0.5 bg-gradient-to-r from-amber-550/40 to-amber-500/15 border border-amber-500/30 rounded-lg text-[9px] shadow-sm animate-pulse-slow cursor-pointer text-amber-500 font-bold shrink-0 transition-all ${
               p1WarlordInstance && selectedAttackerId === p1WarlordInstance.instanceId ? 'ring-1 ring-amber-400 bg-amber-500/10 animate-pulse' : ''
+            } ${
+              p1WarlordInstance && selectedHQCardId === p1WarlordInstance.instanceId ? 'ring-2 ring-purple-500 bg-purple-950/20 shadow-[0_0_8px_rgba(168,85,247,0.5)]' : ''
             } ${p1WarlordInstance && p1WarlordInstance.isExhausted ? 'opacity-35 cursor-not-allowed' : ''}`}
           >
             👑 Cato (W)
-            <span className="text-red-400 font-bold font-mono text-[8.5px] ml-1 flex items-center">⚔️2</span>
-            <span className="text-green-405 font-bold font-mono text-[8.5px] flex items-center">❤️{p1WarlordHp}</span>
+            <span className="text-red-400 font-bold font-mono text-[8.5px] ml-1 flex items-center">⚔️{p1WarlordInstance ? getUnitAdjustedAttack(gameState, p1WarlordInstance) : 2}</span>
+            <span className="text-green-455 font-bold font-mono text-[8.5px] flex items-center">❤️{p1WarlordHp}</span>
             <span className="text-cyan-400 font-bold font-mono text-[8.5px] flex items-center">🔨2</span>
           </div>
         )}
@@ -416,6 +424,7 @@ export default function PlanetDisplay({
             onMouseLeave={handleUnitMouseLeave}
             onMouseMove={handleUnitMouseMove}
             onClick={() => {
+              setSelectedHQCardId(selectedHQCardId === u.instanceId ? null : u.instanceId);
               // Player active attack selecting
               if (gameState.phase === 'COMBAT' && isUnderConflict && gameState.activePlayerId === 'player-1') {
                 if (gameState.combat.subPhase === 'MELEE' && !u.isExhausted) {
@@ -427,12 +436,14 @@ export default function PlanetDisplay({
             }}
             className={`flex items-center gap-1 px-1.5 py-0.5 bg-white/5 border border-white/10 rounded-lg text-[9px] text-gray-300 font-sans cursor-pointer hover:bg-white/10 transition-all shrink-0 ${
               selectedAttackerId === u.instanceId ? 'ring-1 ring-amber-400 bg-amber-500/10 animate-pulse' : ''
+            } ${
+              selectedHQCardId === u.instanceId ? 'ring-2 ring-purple-500 bg-purple-950/20 shadow-[0_0_8px_rgba(168,85,247,0.5)]' : ''
             } ${u.isExhausted ? 'opacity-35 cursor-not-allowed' : ''}`}
-            title={`${u.name}${u.isExhausted ? ' (Exhausted)' : ''}: Click to attack/retreat`}
+            title={`${u.name}${u.isExhausted ? ' (Exhausted)' : ''}: Click to attack/retreat/select`}
           >
             <span className={`truncate max-w-[50px] font-medium ${u.isExhausted ? 'text-gray-500 line-through' : ''}`}>{u.name.split(' ').slice(-1)}</span>
-            <span className="text-red-400 font-bold font-mono text-[8.5px] flex items-center">⚔️{u.attack}</span>
-            <span className="text-green-400 font-bold font-mono text-[8.5px] flex items-center">❤️{u.hp - u.damage}</span>
+            <span className="text-red-400 font-bold font-mono text-[8.5px] flex items-center">⚔️{getUnitAdjustedAttack(gameState, u)}</span>
+            <span className="text-green-400 font-bold font-mono text-[8.5px] flex items-center">❤️{getUnitAdjustedHp(gameState, u) - u.damage}</span>
             {u.commandIcons > 0 && (
               <span className="text-cyan-400 font-bold font-mono text-[8.5px] flex items-center">🔨{u.commandIcons}</span>
             )}
@@ -557,6 +568,8 @@ export default function PlanetDisplay({
           card={hoveredUnit}
           canPlay={false}
           size="lg"
+          adjustedAttack={hoveredUnit.instanceId ? getUnitAdjustedAttack(gameState, hoveredUnit) : undefined}
+          adjustedHp={hoveredUnit.instanceId ? getUnitAdjustedHp(gameState, hoveredUnit) : undefined}
         />
       </div>
     )}

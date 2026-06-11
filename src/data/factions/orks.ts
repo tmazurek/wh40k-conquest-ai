@@ -1107,7 +1107,7 @@ export const ORK_CARDS: Record<string, CardDefinition> = {
     hp: 7,
     shields: 0,
     traits: ["Warrior","Warboss"],
-    keywords: [],
+    keywords: ["Brutal"],
     description: "Each other unit you control at this planet gains Brutal.",
     conquestCardId: '01003',
     startingCards: 7,

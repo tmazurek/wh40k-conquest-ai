@@ -183,13 +183,21 @@ export const deployUnit = (state: GameState, playerId: string, cardInstanceId: s
   if (cardIndex === -1) return false;
   const card = player.hand[cardIndex];
 
-  if (player.resources < card.cost) {
+  let cost = card.cost;
+  if (card.faction === 'Orks' && planetId !== 'HQ') {
+    const crushfacePresent = getUnitsAtPlanet(state, planetId).some(u => u.id === 'ork-crushface' && u.controllerId === playerId);
+    if (crushfacePresent) {
+      cost = Math.max(0, cost - 1);
+    }
+  }
+
+  if (player.resources < cost) {
     addLog(state, `⚠️ Not enough resources to deploy ${card.name}!`, playerId);
     return false;
   }
 
   // Deduct resources
-  player.resources -= card.cost;
+  player.resources -= cost;
   // Remove from hand
   player.hand.splice(cardIndex, 1);
 
@@ -197,12 +205,12 @@ export const deployUnit = (state: GameState, playerId: string, cardInstanceId: s
   if (planetId === 'HQ') {
     card.location = 'HQ';
     player.hq.push(card);
-    addLog(state, `🚀 Deployed ${card.name} into HQ. Cost: ${card.cost} Resources.`, playerId);
+    addLog(state, `🚀 Deployed ${card.name} into HQ. Cost: ${cost} Resources.`, playerId);
   } else {
     card.location = 'PLANET';
     card.locationId = planetId;
     player.hq.push(card);
-    addLog(state, `🪐 Deployed ${card.name} to ${getPlanetName(state, planetId)}. Cost: ${card.cost} Resources.`, playerId);
+    addLog(state, `🪐 Deployed ${card.name} to ${getPlanetName(state, planetId)}. Cost: ${cost} Resources.`, playerId);
     
     // Register custom triggers
     triggerDeployReactions(state, card, playerId, planetId);
@@ -253,6 +261,38 @@ const triggerDeployReactions = (state: GameState, card: CardInstance, playerId: 
         addLog(state, `🗺️ 10th Company Tactician redeploys ${victim.name} to adjacent planet ${getPlanetName(state, dest)}.`, playerId);
       }
     }
+  }
+
+  // tau-technician reaction
+  if (card.id === 'tau-technician') {
+    const player = state.players[playerId];
+    if (player.deck.length > 0) {
+      const top6 = player.deck.slice(-6).reverse();
+      const matchIdx = top6.findIndex(c => c.type === 'Attachment' || c.traits.includes('Drone') || c.id.includes('drone'));
+      if (matchIdx !== -1) {
+        const matchedCard = top6[matchIdx];
+        const deckIdx = player.deck.findIndex(c => c.instanceId === matchedCard.instanceId);
+        if (deckIdx !== -1) {
+          player.deck.splice(deckIdx, 1);
+          matchedCard.location = 'HAND';
+          player.hand.push(matchedCard);
+          addLog(state, `🔧 Earth Caste Technician search: Found and drew attachment/drone card ${matchedCard.name}!`, playerId);
+        }
+      } else {
+        addLog(state, `🔧 Earth Caste Technician search: No attachment or drone card found in top 6 cards.`, playerId);
+      }
+    }
+  }
+
+  // ork-weirdboy reaction
+  if (card.id === 'ork-weirdboy') {
+    const unitsAtPlanet = getUnitsAtPlanet(state, planetId);
+    unitsAtPlanet.forEach(u => {
+      if (u.instanceId !== card.instanceId) {
+        applyDamageToUnit(state, u, 1);
+      }
+    });
+    addLog(state, `⚡ Weirdboy Maniak enters play! Deals 1 damage to each other unit at ${getPlanetName(state, planetId)}.`, playerId);
   }
 };
 
@@ -307,7 +347,7 @@ export const getPlacedUnitsForPlayer = (state: GameState, playerId: string): Car
   const list: CardInstance[] = [];
   // Traverse card listings, just representing placing them
   // To avoid deep nested arrays we make sure we have flat arrays easily
-  return player.deck.concat(player.hand).concat(player.discard).concat(player.hq).filter(c => c.location === 'PLANET');
+  return player.deck.concat(player.hand).concat(player.discard).concat(player.hq).filter(c => c.location === 'PLANET' && c.type !== 'Attachment');
 };
 
 // Play Support Card (Activated Ability)
@@ -348,11 +388,88 @@ export const playSupportCard = (state: GameState, playerId: string, cardInstance
   return true;
 };
 
-// Exhaust Support for Ability
+// Exhaust Support/Unit for Ability
 export const triggerSupportAbility = (state: GameState, playerId: string, cardInstanceId: string, targetId?: string): boolean => {
   const player = state.players[playerId];
-  const card = player.hq.find(c => c.instanceId === cardInstanceId);
-  if (!card || card.isExhausted) return false;
+  const card = player.hq.find(c => c.instanceId === cardInstanceId) ||
+               state.planets.flatMap(p => getUnitsAtPlanet(state, p.id)).find(c => c.instanceId === cardInstanceId && c.controllerId === playerId);
+  
+  if (!card) return false;
+
+  // Flash Gitz can be triggered when exhausted to ready it
+  if (card.id === 'ork-flashgitz') {
+    if (state.phase !== 'COMBAT') {
+      addLog(state, `⚠️ Flash Gitz ability can only be triggered during the Combat Phase!`, playerId);
+      return false;
+    }
+    if (!card.isExhausted) {
+      addLog(state, `⚠️ Flash Gitz is already ready!`, playerId);
+      return false;
+    }
+    if ((card as any).flashGitzUsedThisPhase) {
+      addLog(state, `⚠️ Flash Gitz ability can only be used once per phase!`, playerId);
+      return false;
+    }
+    (card as any).flashGitzUsedThisPhase = true;
+    card.isExhausted = false;
+    applyDamageToUnit(state, card, 1);
+    addLog(state, `🪓 Nazdreg's Flash Gitz deals itself 1 damage to ready!`, playerId);
+    return true;
+  }
+
+  if (card.isExhausted) return false;
+
+  // sm-maxos: Combat Action: Deploy SM unit from hand
+  if (card.id === 'sm-maxos') {
+    if (state.phase !== 'COMBAT' || state.activePlayerId !== playerId) {
+      addLog(state, `⚠️ Maxos ability can only be triggered as a Combat Action during your turn!`, playerId);
+      return false;
+    }
+    const activePlanet = state.planets[state.combat.activePlanetIndex];
+    if (!activePlanet || card.locationId !== activePlanet.id) {
+      addLog(state, `⚠️ Veteran Brother Maxos must be at the active combat planet to trigger!`, playerId);
+      return false;
+    }
+    const smUnit = player.hand.find(u => u.type === 'Army' && u.faction === 'Space Marines' && player.resources >= u.cost);
+    if (!smUnit) {
+      addLog(state, `⚠️ No affordable Space Marine army units in hand to deploy!`, playerId);
+      return false;
+    }
+    card.isExhausted = true;
+    player.resources -= smUnit.cost;
+    const handIdx = player.hand.findIndex(u => u.instanceId === smUnit.instanceId);
+    player.hand.splice(handIdx, 1);
+    smUnit.location = 'PLANET';
+    smUnit.locationId = activePlanet.id;
+    player.hq.push(smUnit);
+    addLog(state, `🚀 Veteran Brother Maxos deploys ${smUnit.name} from hand to ${activePlanet.name} for ${smUnit.cost} resources!`, playerId);
+    return true;
+  }
+
+  // ork-tellyporta: Combat Action: Exhaust to move Ork unit to first planet
+  if (card.id === 'ork-tellyporta') {
+    if (state.phase !== 'COMBAT') {
+      addLog(state, `⚠️ Tellyporta Pad can only be activated during the Combat Phase!`, playerId);
+      return false;
+    }
+    const firstPlanet = state.planets.find(p => p.isFirstPlanet) || state.planets[0];
+    let targetOrk: CardInstance | undefined;
+    if (targetId) {
+      targetOrk = state.planets.flatMap(p => getUnitsAtPlanet(state, p.id)).find(u => u.instanceId === targetId && u.controllerId === playerId && u.faction === 'Orks');
+    } else {
+      targetOrk = state.planets.flatMap(p => getUnitsAtPlanet(state, p.id))
+                   .find(u => u.controllerId === playerId && u.faction === 'Orks' && u.locationId !== firstPlanet.id);
+    }
+    if (!targetOrk) {
+      addLog(state, `⚠️ No eligible Ork units to teleport!`, playerId);
+      return false;
+    }
+    card.isExhausted = true;
+    targetOrk.location = 'PLANET';
+    targetOrk.locationId = firstPlanet.id;
+    addLog(state, `🌌 Tellyporta Pad teleports ${targetOrk.name} to first planet ${firstPlanet.name}!`, playerId);
+    return true;
+  }
 
   if (card.id === 'neutral-mine') {
     card.isExhausted = true;
@@ -447,22 +564,6 @@ export const triggerSupportAbility = (state: GameState, playerId: string, cardIn
     card.isExhausted = true;
     cato.damage = Math.max(0, cato.damage - 1);
     addLog(state, `😇 Activated Iron Halo: Cato Sicarius absorbs holy energy and heals 1 Damage!`, playerId);
-    return true;
-  }
-
-  if (card.id === 'tau-ionrifle') {
-    let allEnemies: CardInstance[] = [];
-    state.planets.forEach(p => {
-      allEnemies.push(...getUnitsAtPlanet(state, p.id).filter(u => u.controllerId !== playerId));
-    });
-    const victim = allEnemies.find(u => u.instanceId === targetId) || allEnemies[0];
-    if (!victim) {
-      addLog(state, `⚠️ No enemies in play to target with the Ion Rifle!`, playerId);
-      return false;
-    }
-    card.isExhausted = true;
-    applyDamageToUnit(state, victim, 1);
-    addLog(state, `🔫 Ion Rifle discharges! Dealt 1 splash damage to ${victim.name}.`, playerId);
     return true;
   }
 
@@ -658,9 +759,17 @@ export const playEventCard = (state: GameState, playerId: string, cardInstanceId
 };
 
 // Apply damage and handle death
+// Apply damage and handle death
 export const applyDamageToUnit = (state: GameState, unit: CardInstance, rawDamage: number) => {
-  unit.damage += rawDamage;
-  const currentHp = unit.hp;
+  let finalDamage = rawDamage;
+  // sm-bloodangels: prevent 1 damage while ready
+  if (unit.id === 'sm-bloodangels' && !unit.isExhausted && rawDamage > 0) {
+    finalDamage = Math.max(0, rawDamage - 1);
+    addLog(state, `🛡️ Blood Angels Veterans ability prevents 1 damage!`, unit.controllerId);
+  }
+
+  unit.damage += finalDamage;
+  const currentHp = getUnitAdjustedHp(state, unit);
   
   if (unit.damage >= currentHp) {
     if (unit.type === 'Warlord' && !unit.isBloodied) {
@@ -668,6 +777,12 @@ export const applyDamageToUnit = (state: GameState, unit: CardInstance, rawDamag
       unit.isBloodied = true;
       unit.damage = 0;
       unit.description = "";
+      unit.keywords = [];
+      
+      // Immediate move to HQ and exhaust
+      unit.location = 'HQ';
+      unit.locationId = undefined;
+      unit.isExhausted = true;
       
       if (unit.id === 'sm-cato') {
         unit.attack = 1;
@@ -677,7 +792,14 @@ export const applyDamageToUnit = (state: GameState, unit: CardInstance, rawDamag
         unit.hp = 6;
       }
       
-      addLog(state, `🩸 Warlord ${unit.name} is BLOODIED! Ability lost and stats reduced.`, unit.controllerId);
+      addLog(state, `🩸 Warlord ${unit.name} is BLOODIED! Relocated to HQ exhausted, damage reset, ability lost.`, unit.controllerId);
+
+      // Keep attachments on the bloodied Warlord by updating their location to HQ
+      const attachments = getAttachmentsForUnit(state, unit.instanceId);
+      attachments.forEach(att => {
+        att.location = 'HQ';
+        att.locationId = undefined;
+      });
     } else {
       // Normal unit death or a bloodied warlord slain
       destroyUnit(state, unit);
@@ -687,6 +809,11 @@ export const applyDamageToUnit = (state: GameState, unit: CardInstance, rawDamag
 
 const destroyUnit = (state: GameState, unit: CardInstance) => {
   const p = state.players[unit.controllerId];
+  
+  // Capture details before changing location
+  const wasAtPlanet = unit.location === 'PLANET' && unit.locationId;
+  const isSoldierOrWarrior = unit.traits.includes('Soldier') || unit.traits.includes('Warrior');
+
   unit.location = 'DISCARD';
   
   // Remove from active HQ array (where both HQ and PLANET units are tracked)
@@ -696,6 +823,30 @@ const destroyUnit = (state: GameState, unit: CardInstance) => {
   p.discard.push(unit);
 
   addLog(state, `💀 Unit ${unit.name} was destroyed. Move to Discard pile.`, unit.controllerId);
+
+  // neutral-elysian interrupt: put into play from hand when Soldier or Warrior leaves play from planet
+  if (wasAtPlanet && isSoldierOrWarrior) {
+    const elysianIdx = p.hand.findIndex(h => h.id === 'neutral-elysian');
+    if (elysianIdx !== -1) {
+      const elysian = p.hand.splice(elysianIdx, 1)[0];
+      elysian.location = 'PLANET';
+      elysian.locationId = wasAtPlanet;
+      p.hq.push(elysian);
+      addLog(state, `🪂 Elysian Assault Team deploys from hand to ${getPlanetName(state, wasAtPlanet)} as an Interrupt!`, unit.controllerId);
+    }
+  }
+
+  // Discard all attachments on this unit
+  const attachments = getAttachmentsForUnit(state, unit.instanceId);
+  attachments.forEach(att => {
+    const attOwner = state.players[att.controllerId];
+    att.location = 'DISCARD';
+    att.attachedToId = undefined;
+    const attIdx = attOwner.hq.findIndex(u => u.instanceId === att.instanceId);
+    if (attIdx !== -1) attOwner.hq.splice(attIdx, 1);
+    attOwner.discard.push(att);
+    addLog(state, `🗑️ Attachment ${att.name} on ${unit.name} was discarded.`, att.controllerId);
+  });
 
   // Trigger Cato reaction if an enemy unit is destroyed on Cato's planet
   const catoWarlord = state.players['player-1'].hq.find(u => u.id === 'sm-cato');
@@ -822,17 +973,17 @@ export const executeCommandStruggle = (state: GameState) => {
     const aiUnits = getUnitsAtPlanet(state, p.id).filter(u => u.controllerId === 'ai-1');
 
     // Count command icons
-    let p1Command = p1Units.reduce((acc, unit) => acc + (unit.isExhausted ? 0 : unit.commandIcons), 0);
-    let aiCommand = aiUnits.reduce((acc, unit) => acc + (unit.isExhausted ? 0 : unit.commandIcons), 0);
+    let p1Command = p1Units.reduce((acc, unit) => acc + (unit.isExhausted ? 0 : getUnitAdjustedCommand(state, unit)), 0);
+    let aiCommand = aiUnits.reduce((acc, unit) => acc + (unit.isExhausted ? 0 : getUnitAdjustedCommand(state, unit)), 0);
 
-    // If active Warlord is present and ready, add 2 command icons
+    // If active Warlord is present and ready, add command icons
     if (state.warlordCommitments['player-1'] === p.index) {
       const cato = state.players['player-1'].hq.find(u => u.id === 'sm-cato');
-      if (cato && !cato.isExhausted) p1Command += cato.commandIcons;
+      if (cato && !cato.isExhausted) p1Command += getUnitAdjustedCommand(state, cato);
     }
     if (state.warlordCommitments['ai-1'] === p.index) {
       const naz = state.players['ai-1'].hq.find(u => u.id === 'ork-nazdreg');
-      if (naz && !naz.isExhausted) aiCommand += naz.commandIcons;
+      if (naz && !naz.isExhausted) aiCommand += getUnitAdjustedCommand(state, naz);
     }
 
     if (p1Command > 0 || aiCommand > 0) {
@@ -870,6 +1021,14 @@ export const manualProceedToCombat = (state: GameState) => {
 export const startCombatPhase = (state: GameState) => {
   state.phase = 'COMBAT';
   addLog(state, `⚔️ Phase transition: COMBAT PHASE begins!`);
+
+  // Reset Flash Gitz once per phase limits
+  Object.values(state.players).forEach(p => {
+    p.hq.forEach(u => delete (u as any).flashGitzUsedThisPhase);
+  });
+  state.planets.forEach(pl => {
+    getUnitsAtPlanet(state, pl.id).forEach(u => delete (u as any).flashGitzUsedThisPhase);
+  });
   
   // Find first planet that has units to battle, starting with Index 0
   // Combat resolves at First Planet AND planets containing Warlords
@@ -1161,17 +1320,41 @@ export const declareAttack = (st: GameState, attackerId: string, targetId: strin
   const units = getUnitsAtPlanet(st, planet.id);
   
   const attacker = units.find(u => u.instanceId === attackerId);
-  const target = units.find(u => u.instanceId === targetId);
+  let target = units.find(u => u.instanceId === targetId);
 
   if (!attacker || !target) return false;
   if (attacker.isExhausted) return false;
 
+  // sm-librarian (Honored Librarian): Enemy units cannot attack this unit while you control another unit not named 'Honored Librarian'
+  if (target.id === 'sm-librarian' && attacker.controllerId !== target.controllerId) {
+    const friendlyOthers = units.filter(u => u.controllerId === target.controllerId && u.id !== 'sm-librarian');
+    if (friendlyOthers.length > 0) {
+      addLog(st, `⚠️ Cannot attack Honored Librarian because other friendly units protect it!`, attacker.controllerId);
+      return false;
+    }
+  }
+
+  // tau-firewarrior (Fire Warrior Elite): Intercept attack
+  if (target.id !== 'tau-firewarrior' && target.controllerId !== attacker.controllerId) {
+    const interceptor = units.find(u => u.id === 'tau-firewarrior' && u.controllerId === target.controllerId);
+    if (interceptor) {
+      addLog(st, `🛡️ Intercept! ${interceptor.name} steps in to defend ${target.name}.`, target.controllerId);
+      target = interceptor;
+    }
+  }
+
+  // Enforce Ranged subphase restriction
+  if (st.combat.subPhase === 'RANGED' && !unitHasKeyword(st, attacker, 'Ranged')) {
+    addLog(st, `⚠️ Only Ranged units can attack during the Ranged Skirmish subphase!`, attacker.controllerId);
+    return false;
+  }
+
   // Compute Base ATK
-  let finalAtk = attacker.attack;
+  let finalAtk = getUnitAdjustedAttack(st, attacker);
   
   // Apply Brutal
-  if (attacker.keywords.includes('Brutal') || 
-     (attacker.faction === 'Orks' && hasWarlordAtPlanet(st, 'ai-1', planet.id) && st.players['ai-1'].hq.some(u => u.id === 'ork-nazdreg' && !u.isBloodied))) {
+  if (unitHasKeyword(st, attacker, 'Brutal') || 
+     (attacker.id !== 'ork-nazdreg' && attacker.faction === 'Orks' && hasWarlordAtPlanet(st, 'ai-1', planet.id) && st.players['ai-1'].hq.some(u => u.id === 'ork-nazdreg' && !u.isBloodied))) {
     finalAtk += attacker.damage;
   }
 
@@ -1189,10 +1372,20 @@ export const declareAttack = (st: GameState, attackerId: string, targetId: strin
     attackerId: attacker.instanceId,
     targetId: target.instanceId,
     damageAmount: finalAtk,
-    isArmorbane: attacker.keywords.includes('Armorbane')
+    isArmorbane: unitHasKeyword(st, attacker, 'Armorbane')
   };
 
   addLog(st, `⚔️ ${attacker.name} attacks ${target.name} for ${finalAtk} raw damage!`, attacker.controllerId);
+
+  // ork-burnaboyz attack reaction: deal 1 damage to a different enemy unit at the same planet
+  if (attacker.id === 'ork-burnaboyz') {
+    const otherEnemies = units.filter(u => u.controllerId !== attacker.controllerId && u.instanceId !== target.instanceId);
+    if (otherEnemies.length > 0) {
+      const burnTarget = [...otherEnemies].sort((a, b) => (a.hp - a.damage) - (b.hp - b.damage))[0];
+      applyDamageToUnit(st, burnTarget, 1);
+      addLog(st, `🔥 Burna Boyz declare attack! Reaction deals 1 damage to other unit ${burnTarget.name}.`, attacker.controllerId);
+    }
+  }
 
   // Prompt defender for shield if applicable
   const defenderId = target.controllerId;
@@ -1568,11 +1761,17 @@ export const startHqPhase = (state: GameState) => {
 
   // Ready all exhausted units across HQ and Planets
   Object.values(state.players).forEach(p => {
-    p.hq.forEach(u => u.isExhausted = false);
+    p.hq.forEach(u => {
+      u.isExhausted = false;
+      delete (u as any).flashGitzUsedThisPhase;
+    });
     p.hand.concat(p.discard); // none in list
     // Physically placed units too
     state.planets.forEach(pl => {
-      getUnitsAtPlanet(state, pl.id).forEach(u => u.isExhausted = false);
+      getUnitsAtPlanet(state, pl.id).forEach(u => {
+        u.isExhausted = false;
+        delete (u as any).flashGitzUsedThisPhase;
+      });
     });
   });
 
@@ -1651,7 +1850,16 @@ export const runAiTurn = (state: GameState) => {
       const units = getUnitsAtPlanet(state, activePlanet.id);
       
       const aiReadyUnits = units.filter(u => u.controllerId === 'ai-1' && !u.isExhausted);
-      const enemyUnits = units.filter(u => u.controllerId === 'player-1');
+      const enemyUnits = units.filter(u => {
+        if (u.controllerId === 'player-1') {
+          if (u.id === 'sm-librarian') {
+            const friendlyOthers = units.filter(o => o.controllerId === 'player-1' && o.id !== 'sm-librarian');
+            return friendlyOthers.length === 0;
+          }
+          return true;
+        }
+        return false;
+      });
 
       if (aiReadyUnits.length > 0 && enemyUnits.length > 0) {
         const attacker = aiReadyUnits[0];
@@ -1711,4 +1919,170 @@ export const runAiTurn = (state: GameState) => {
       state.activePlayerId = 'player-1';
     }
   }
+};
+
+// --- Attachment Helper Functions ---
+
+export const getAttachmentsForUnit = (state: GameState, unitId: string): CardInstance[] => {
+  const list: CardInstance[] = [];
+  Object.values(state.players).forEach(player => {
+    player.hq.forEach(card => {
+      if (card.type === 'Attachment' && card.attachedToId === unitId) {
+        list.push(card);
+      }
+    });
+  });
+  return list;
+};
+
+export const getUnitAdjustedAttack = (state: GameState, unit: CardInstance): number => {
+  let attack = unit.attack;
+  const attachments = getAttachmentsForUnit(state, unit.instanceId);
+  attachments.forEach(attachment => {
+    if (attachment.id === 'tau-ionrifle') {
+      attack += 3;
+    } else if (attachment.id === 'sm-godwyn') {
+      attack += 1;
+    } else if (attachment.id === 'sm-tempestblade') {
+      attack += 1;
+    } else if (attachment.id === 'sm-centurionwarsuit') {
+      attack += 2;
+    } else if (attachment.id === 'sm-vitarusthesanguinesword') {
+      attack += 1;
+    } else if (attachment.id === 'ork-hugechainchoppa') {
+      attack += 4;
+    } else if (attachment.id === 'ork-goffbigchoppa') {
+      attack += 2;
+    } else if (attachment.id === 'astra-strakenscunning') {
+      attack += 1;
+    } else if (attachment.id === 'astra-theglovodaneagle') {
+      attack += 1;
+    }
+  });
+
+  // Goff Boyz: +3 ATK while at the first planet
+  if (unit.id === 'ork-goffboyz' && unit.location === 'PLANET' && unit.locationId) {
+    const planet = state.planets.find(p => p.id === unit.locationId);
+    if (planet && planet.isFirstPlanet) {
+      attack += 3;
+    }
+  }
+
+  return attack;
+};
+
+export const getUnitAdjustedHp = (state: GameState, unit: CardInstance): number => {
+  let hp = unit.hp;
+  const attachments = getAttachmentsForUnit(state, unit.instanceId);
+  
+  // Apply flat additions first
+  attachments.forEach(attachment => {
+    if (attachment.id === 'sm-godwyn') {
+      hp += 1;
+    } else if (attachment.id === 'astra-hostilegear') {
+      hp += 3;
+    } else if (attachment.id === 'astra-dozerblade') {
+      hp += 2;
+    } else if (attachment.id === 'sm-centurionwarsuit') {
+      hp += 4;
+    } else if (attachment.id === 'sm-thebladeofantwyr') {
+      hp += 1;
+    } else if (attachment.id === 'sm-vitarusthesanguinesword') {
+      hp += 1;
+    }
+  });
+
+  // Apply multipliers
+  attachments.forEach(attachment => {
+    if (attachment.id === 'ork-cybork') {
+      hp *= 2;
+    }
+  });
+
+  return hp;
+};
+
+export const getUnitAdjustedCommand = (state: GameState, unit: CardInstance): number => {
+  let command = unit.commandIcons;
+  const attachments = getAttachmentsForUnit(state, unit.instanceId);
+  attachments.forEach(attachment => {
+    if (attachment.id === 'neutral-promotion') {
+      command += 2;
+    }
+  });
+
+  // Bad Dok: +3 command icons while damaged
+  if (unit.id === 'ork-baddok' && unit.damage > 0) {
+    command += 3;
+  }
+
+  return command;
+};
+
+export const unitHasKeyword = (state: GameState, unit: CardInstance, keyword: string): boolean => {
+  if (unit.keywords.includes(keyword)) return true;
+  const attachments = getAttachmentsForUnit(state, unit.instanceId);
+  if (keyword === 'Ranged') {
+    if (attachments.some(att => att.id === 'ork-rokkit')) return true;
+  }
+  return false;
+};
+
+export const deployAttachment = (state: GameState, playerId: string, cardInstanceId: string, hostUnitId: string): boolean => {
+  if (state.activePlayerId !== playerId) {
+    addLog(state, `⚠️ It is not your turn to deploy!`, playerId);
+    return false;
+  }
+  if (state.playersPassedDeploy && state.playersPassedDeploy[playerId]) {
+    addLog(state, `⚠️ You have already passed during this Deploy Phase!`, playerId);
+    return false;
+  }
+
+  const player = state.players[playerId];
+  const cardIndex = player.hand.findIndex(c => c.instanceId === cardInstanceId);
+  if (cardIndex === -1) return false;
+  const card = player.hand[cardIndex];
+
+  if (player.resources < card.cost) {
+    addLog(state, `⚠️ Not enough resources to deploy ${card.name}!`, playerId);
+    return false;
+  }
+
+  // Find the host unit
+  let hostUnit: CardInstance | undefined;
+  for (const p of Object.values(state.players)) {
+    hostUnit = p.hq.find(u => u.instanceId === hostUnitId);
+    if (hostUnit) break;
+  }
+
+  if (!hostUnit) {
+    addLog(state, `⚠️ Host unit not found for attachment!`, playerId);
+    return false;
+  }
+
+  // Iron Halo targeting restriction: Attach only to Cato Sicarius
+  if (card.id === 'sm-ironhalo' && hostUnit.id !== 'sm-cato') {
+    addLog(state, `⚠️ Iron Halo can only be attached to Captain Cato Sicarius!`, playerId);
+    return false;
+  }
+
+  // Deduct resources
+  player.resources -= card.cost;
+  // Remove from hand
+  player.hand.splice(cardIndex, 1);
+
+  // Set location to match host unit
+  card.location = hostUnit.location;
+  card.locationId = hostUnit.locationId;
+  card.attachedToId = hostUnit.instanceId;
+
+  // Add to player's active list
+  player.hq.push(card);
+
+  addLog(state, `📎 Attached ${card.name} to ${hostUnit.name}. Cost: ${card.cost} Resources.`, playerId);
+
+  // Reset pass counts, alternate turn
+  state.deployPassCount = 0;
+  alternateDeployTurn(state);
+  return true;
 };
