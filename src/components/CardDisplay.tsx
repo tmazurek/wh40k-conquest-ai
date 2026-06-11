@@ -2,113 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { CardInstance, CardDefinition } from '../engine/types';
 import { Skull, Shield, Zap, Sparkles, AlertCircle, FileText, Eye } from 'lucide-react';
 
-import badDokImg from './card-images/CardImages/Bad_Dok.jpg';
-import battleCryImg from './card-images/CardImages/Battle_Cry.jpg';
-import biggaIsBettaImg from './card-images/CardImages/Bigga_Is_Betta.jpg';
-import burnaBoyzImg from './card-images/CardImages/Burna_Boyz.jpg';
-import crushfaceImg from './card-images/CardImages/Crushface.jpg';
-import cyborkBodyImg from './card-images/CardImages/Cybork_Body.jpg';
-import enragedOrkImg from './card-images/CardImages/Enraged_Ork.jpg';
-import goffBoyzImg from './card-images/CardImages/Goff_Boyz.jpg';
-import goffNobImg from './card-images/CardImages/Goff_Nob.jpg';
-import kraktoofHallImg from './card-images/CardImages/Kraktoof_Hall.jpg';
-import flashGitzImg from "./card-images/CardImages/Nazdreg's_Flash_Gitz.jpg";
-import orkKannonImg from './card-images/CardImages/Ork_Kannon.jpg';
-import rokkitLaunchaImg from './card-images/CardImages/Rokkit_Launcha.jpg';
-import shootaMobImg from './card-images/CardImages/Shoota_Mob.jpg';
-import snotlingAttackImg from './card-images/CardImages/Snotling_Attack.jpg';
-import squigBombinImg from "./card-images/CardImages/Squig_Bombin'.jpg";
-import tellyportaPadImg from './card-images/CardImages/Tellyporta_Pad.jpg';
-import weirdboyManiakImg from './card-images/CardImages/Weirdboy_Maniak.jpg';
+function normalizeKey(str: string): string {
+  return str.toLowerCase().replace(/_/g, ' ').replace(/['"’!]/g, '').trim();
+}
 
-import playsianImg from './card-images/CardImages/Elysian_Assault_Team.jpg';
-import hostileEnvImg from './card-images/CardImages/Hostile_Environment_Gear.jpg';
-import suppressiveImg from './card-images/CardImages/Suppressive_Fire.jpg';
+const imageModules = import.meta.glob('./card-images/CardImages/*.{jpg,png,jpeg}', {
+  eager: true,
+  import: 'default',
+}) as Record<string, string>;
 
-import promotionImg from './card-images/CardImages/Promotion.jpg';
-import fallbackImg from './card-images/CardImages/Fall_Back!.jpg';
-import noMercyImg from './card-images/CardImages/No_Mercy.jpg';
-
-import catoWarlordImg from './card-images/CardImages/Captain_Cato_Sicarius.jpg';
-import catoWarlordBloodiedImg from './card-images/CardImages/Captain_Cato_Sicarius_bloodied.jpg';
-import nazdregWarlordImg from './card-images/CardImages/Nazdreg.jpg';
-import nazdregWarlordBloodiedImg from './card-images/CardImages/Nazdreg_bloodied.jpg';
-
-import scScoutImg from './card-images/CardImages/10th_Company_Scout.jpg';
-import baVeteransImg from './card-images/CardImages/Blood_Angels_Veterans.jpg';
-import catoStrongholdImg from "./card-images/CardImages/Cato's_Stronghold.jpg";
-import dropPodAssaultImg from './card-images/CardImages/Drop_Pod_Assault.jpg';
-import eagerRecruitImg from './card-images/CardImages/Eager_Recruit.jpg';
-import exterminatusImg from './card-images/CardImages/Exterminatus.jpg';
-import fortressMonasteryImg from './card-images/CardImages/Fortress-Monastery.jpg';
-import godwynBolterImg from './card-images/CardImages/Godwyn_Pattern_Bolter.jpg';
-import honoredLibrarianImg from './card-images/CardImages/Honored_Librarian.jpg';
-import indomitableImg from './card-images/CardImages/Indomitable.jpg';
-import ironHaloImg from './card-images/CardImages/Iron_Halo.jpg';
-import sicariusChosenImg from "./card-images/CardImages/Sicarius's_Chosen.jpg";
-import squadCardinisImg from './card-images/CardImages/Tactical_Squad_Cardinis.jpg';
-import tempestBladeImg from './card-images/CardImages/Tallassarian_Tempest_Blade.jpg';
-import furyOfSicariusImg from './card-images/CardImages/The_Fury_of_Sicarius.jpg';
-import umDreadnoughtImg from './card-images/CardImages/Ultramarines_Dreadnought.jpg';
-import veteranMaxosImg from './card-images/CardImages/Veteran_Brother_Maxos.jpg';
-
-import earthTechnicianImg from './card-images/CardImages/Earth_Caste_Technician.jpg';
-import fireWarriorEliteImg from './card-images/CardImages/Fire_Warrior_Elite.jpg';
-import ionRifleImg from './card-images/CardImages/Ion_Rifle.jpg';
-
-const LOCAL_CARD_IMAGES: Record<string, string> = {
-  'Captain Cato Sicarius': catoWarlordImg,
-  'Captain Cato Sicarius_bloodied': catoWarlordBloodiedImg,
-  'Nazdreg': nazdregWarlordImg,
-  'Nazdreg_bloodied': nazdregWarlordBloodiedImg,
-  'Bad Dok': badDokImg,
-  'Battle Cry': battleCryImg,
-  'Bigga Is Betta': biggaIsBettaImg,
-  'Burna Boyz': burnaBoyzImg,
-  'Crushface': crushfaceImg,
-  'Cybork Body': cyborkBodyImg,
-  'Enraged Ork': enragedOrkImg,
-  'Goff Boyz': goffBoyzImg,
-  'Goff Nob': goffNobImg,
-  'Kraktoof Hall': kraktoofHallImg,
-  "Nazdreg's Flash Gitz": flashGitzImg,
-  "Nazdregs Flash Gitz": flashGitzImg,
-  'Ork Kannon': orkKannonImg,
-  'Rokkit Launcha': rokkitLaunchaImg,
-  'Shoota Mob': shootaMobImg,
-  'Shoota Boyz': shootaMobImg,
-  'Snotling Attack': snotlingAttackImg,
-  "Squig Bombin'": squigBombinImg,
-  "Squig Bombin": squigBombinImg,
-  'Tellyporta Pad': tellyportaPadImg,
-  'Weirdboy Maniak': weirdboyManiakImg,
-  'Elysian Assault Team': playsianImg,
-  'Hostile Environment Gear': hostileEnvImg,
-  'Suppressive Fire': suppressiveImg,
-  'Promotion': promotionImg,
-  'Fall Back!': fallbackImg,
-  'No Mercy': noMercyImg,
-  '10th Company Scout': scScoutImg,
-  'Blood Angels Veterans': baVeteransImg,
-  "Cato's Stronghold": catoStrongholdImg,
-  'Drop Pod Assault': dropPodAssaultImg,
-  'Eager Recruit': eagerRecruitImg,
-  'Exterminatus': exterminatusImg,
-  'Fortress-Monastery': fortressMonasteryImg,
-  'Godwyn Pattern Bolter': godwynBolterImg,
-  'Honored Librarian': honoredLibrarianImg,
-  'Indomitable': indomitableImg,
-  'Iron Halo': ironHaloImg,
-  "Sicarius's Chosen": sicariusChosenImg,
-  'Tactical Squad Cardinis': squadCardinisImg,
-  'Tallassarian Tempest Blade': tempestBladeImg,
-  'The Fury of Sicarius': furyOfSicariusImg,
-  'Ultramarines Dreadnought': umDreadnoughtImg,
-  'Veteran Brother Maxos': veteranMaxosImg,
-  'Earth Caste Technician': earthTechnicianImg,
-  'Fire Warrior Elite': fireWarriorEliteImg,
-  'Ion Rifle': ionRifleImg,
-};
+const LOCAL_CARD_IMAGES: Record<string, string> = {};
+for (const [path, url] of Object.entries(imageModules)) {
+  const filenameWithExt = path.split('/').pop() || '';
+  const filename = filenameWithExt.replace(/\.[^/.]+$/, '');
+  const normalized = normalizeKey(filename);
+  LOCAL_CARD_IMAGES[normalized] = url;
+}
 
 interface CardDisplayProps {
   card: CardInstance | CardDefinition;
@@ -152,8 +61,8 @@ export default function CardDisplay({ card, onClick, isSelected, canPlay = true,
 
   const isBloodied = instance?.isBloodied || false;
   const conqId = card.conquestCardId;
-  const localImageKey = isBloodied ? `${card.name}_bloodied` : card.name;
-  const localImage = LOCAL_CARD_IMAGES[localImageKey] || LOCAL_CARD_IMAGES[card.name];
+  const lookupKey = isBloodied ? `${card.name} bloodied` : card.name;
+  const localImage = LOCAL_CARD_IMAGES[normalizeKey(lookupKey)] || LOCAL_CARD_IMAGES[normalizeKey(card.name)];
   const rawImageUrl = conqId
     ? `https://www.conquestdb.com/allowed/cards/${conqId}${isBloodied ? 'b' : ''}.png`
     : null;
