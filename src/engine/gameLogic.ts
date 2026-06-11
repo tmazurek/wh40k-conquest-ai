@@ -202,6 +202,46 @@ export const deployUnit = (state: GameState, playerId: string, cardInstanceId: s
     }
   }
 
+  // astra-infantryconscripts: cost reduced by 1 if Warlord is at the target planet
+  if (card.id === 'astra-infantryconscripts' && planetId !== 'HQ') {
+    if (hasWarlordAtPlanet(state, playerId, planetId)) {
+      cost = Math.max(0, cost - 1);
+    }
+  }
+
+  // Support-based discounts:
+  // astra-imperialbunker: when deploying ASTRA MILITARUM unit, exhaust to reduce cost by 1
+  if (card.faction === 'Astra Militarum' && card.type === 'Army') {
+    const bunker = player.hq.find(u => u.id === 'astra-imperialbunker' && !u.isExhausted);
+    if (bunker) {
+      bunker.isExhausted = true;
+      cost = Math.max(0, cost - 1);
+      addLog(state, `🏢 Imperial Bunker exhausted: Cost of ${card.name} reduced by 1.`, playerId);
+    }
+  }
+
+  // eldar-frontlinelaunchbay / tau-frontlinelaunchbay: when deploying Eldar/Tau vehicle, exhaust to reduce cost by 1 (or 2 for bonesinger etc - let's stick to simple -1)
+  if (card.traits.includes('Vehicle')) {
+    const bay = player.hq.find(u => (u.id === 'eldar-frontlinelaunchbay' || u.id === 'tau-frontlinelaunchbay') && !u.isExhausted);
+    if (bay) {
+      bay.isExhausted = true;
+      cost = Math.max(0, cost - 1);
+      addLog(state, `🚢 Frontline Launch Bay exhausted: Cost of ${card.name} reduced by 1.`, playerId);
+    }
+  }
+
+  // Splintered Path Acolyte: Interrupt: When you deploy a Daemon unit, sacrifice this unit to reduce its cost by 2.
+  if (card.traits.includes('Daemon')) {
+    // Check if we have splinered path acolyte in play at target planet or HQ
+    const acolyte = player.hq.find(u => u.id === 'chaos-splinteredpathacolyte') || 
+                    (planetId !== 'HQ' ? getUnitsAtPlanet(state, planetId).find(u => u.id === 'chaos-splinteredpathacolyte' && u.controllerId === playerId) : undefined);
+    if (acolyte) {
+      destroyUnit(state, acolyte);
+      cost = Math.max(0, cost - 2);
+      addLog(state, `🩸 Splintered Path Acolyte sacrificed: Cost of Daemon ${card.name} reduced by 2.`, playerId);
+    }
+  }
+
   if (player.resources < cost) {
     addLog(state, `⚠️ Not enough resources to deploy ${card.name}!`, playerId);
     return false;
@@ -304,6 +344,88 @@ const triggerDeployReactions = (state: GameState, card: CardInstance, playerId: 
       }
     });
     addLog(state, `⚡ Weirdboy Maniak enters play! Deals 1 damage to each other unit at ${getPlanetName(state, planetId)}.`, playerId);
+  }
+
+  // eldar-eldarsurvivalist / eldar-starbanescouncil: enters play -> draw 1 card
+  if (card.id === 'eldar-eldarsurvivalist' || card.id === 'eldar-starbanescouncil') {
+    drawCardsForPlayer(state, playerId, 1);
+  }
+
+  // eldar-wailingwraithfighter: enters play -> exhaust target enemy unit at this planet
+  if (card.id === 'eldar-wailingwraithfighter') {
+    const enemies = getUnitsAtPlanet(state, planetId).filter(u => u.controllerId !== playerId && !u.isExhausted);
+    if (enemies.length > 0) {
+      const victim = enemies[0];
+      victim.isExhausted = true;
+      addLog(state, `✈️ Wailing Wraithfighter enters play: Exhausts enemy unit ${victim.name} at ${getPlanetName(state, planetId)}.`, playerId);
+    }
+  }
+
+  // chaos-zarathursflamers: enters play -> deal 1 damage to each enemy unit at this planet
+  if (card.id === 'chaos-zarathursflamers') {
+    const enemies = getUnitsAtPlanet(state, planetId).filter(u => u.controllerId !== playerId);
+    enemies.forEach(u => {
+      // isCardEffect = true so that Zarathur can boost it!
+      applyDamageToUnitInternal(state, u, 1, true);
+    });
+    addLog(state, `🔥 Zarathur's Flamers enters play: Deals 1 damage to all enemy units at ${getPlanetName(state, planetId)}.`, playerId);
+  }
+
+  // chaos-alphalegioninfiltrator: enters play -> target enemy unit gets -2 ATK until the end of the phase
+  if (card.id === 'chaos-alphalegioninfiltrator') {
+    const enemies = getUnitsAtPlanet(state, planetId).filter(u => u.controllerId !== playerId);
+    if (enemies.length > 0) {
+      const targetUnit = enemies[0];
+      (targetUnit as any).tempAttackBuff = ((targetUnit as any).tempAttackBuff || 0) - 2;
+      addLog(state, `👥 Alpha Legion Infiltrator enters play: Debuffs ${targetUnit.name}'s attack by -2 until end of phase.`, playerId);
+    }
+  }
+
+  // de-kabalitestrikeforce: enters play -> deal 1 damage to target unit at this planet
+  if (card.id === 'de-kabalitestrikeforce') {
+    const targets = getUnitsAtPlanet(state, planetId);
+    if (targets.length > 0) {
+      const victim = targets[0];
+      applyDamageToUnitInternal(state, victim, 1, true);
+      addLog(state, `🗡️ Kabalite Strike Force enters play: Deals 1 damage to ${victim.name}.`, playerId);
+    }
+  }
+
+  // astra-captainmarkis: enters play -> deal 2 damage to a unit at this planet
+  if (card.id === 'astra-captainmarkis') {
+    const targets = getUnitsAtPlanet(state, planetId);
+    if (targets.length > 0) {
+      const victim = targets[0];
+      applyDamageToUnitInternal(state, victim, 2, true);
+      addLog(state, `🎖️ Captain Markis enters play: Deals 2 damage to ${victim.name}.`, playerId);
+    }
+  }
+
+  // de-kithskhymeramasters: enters play -> spawn a Khymera token at this planet
+  if (card.id === 'de-kithskhymeramasters') {
+    const khymeraToken: CardInstance = {
+      id: 'de-khymeratoken',
+      instanceId: `de-khymeratoken-${generateId()}`,
+      name: "Khymera",
+      type: 'Army',
+      faction: 'Dark Eldar',
+      cost: 0,
+      commandIcons: 0,
+      attack: 1,
+      hp: 1,
+      shields: 0,
+      traits: ["Khymera","Beast"],
+      keywords: [],
+      description: "Token unit.",
+      controllerId: playerId,
+      damage: 0,
+      isExhausted: false,
+      isBloodied: false,
+      location: 'PLANET',
+      locationId: planetId
+    };
+    state.players[playerId].hq.push(khymeraToken);
+    addLog(state, `🐾 Khymeramasters enters play: Spawns a Khymera token at ${getPlanetName(state, planetId)}.`, playerId);
   }
 };
 
@@ -455,6 +577,80 @@ export const triggerSupportAbility = (state: GameState, playerId: string, cardIn
     player.hq.push(smUnit);
     addLog(state, `🚀 Veteran Brother Maxos deploys ${smUnit.name} from hand to ${activePlanet.name} for ${smUnit.cost} resources!`, playerId);
     return true;
+  }
+
+  // tau-communicationsrelay: Action: exhaust to move one of your committed units to an adjacent planet
+  if (card.id === 'tau-communicationsrelay') {
+    const friendlyUnits = state.planets.flatMap(p => getUnitsAtPlanet(state, p.id)).filter(u => u.controllerId === playerId && u.type === 'Army' && u.locationId);
+    if (friendlyUnits.length > 0) {
+      const targetUnit = friendlyUnits[0];
+      const pIdx = state.planets.findIndex(p => p.id === targetUnit.locationId);
+      const destIdx = pIdx === 0 ? 1 : pIdx - 1;
+      const destPlanet = state.planets[destIdx];
+      targetUnit.locationId = destPlanet.id;
+      card.isExhausted = true;
+      addLog(state, `📡 Communications Relay: Moved ${targetUnit.name} to adjacent planet ${destPlanet.name}.`, playerId);
+      return true;
+    }
+    return false;
+  }
+
+  // eldar-alaitocshrine: Support Action: exhaust to move a friendly unit from a planet to HQ
+  if (card.id === 'eldar-alaitocshrine') {
+    const friendlyUnits = state.planets.flatMap(p => getUnitsAtPlanet(state, p.id)).filter(u => u.controllerId === playerId && u.type === 'Army');
+    if (friendlyUnits.length > 0) {
+      const targetUnit = friendlyUnits[0];
+      targetUnit.location = 'HQ';
+      targetUnit.locationId = undefined;
+      card.isExhausted = true;
+      addLog(state, `⛩️ Alaitoc Shrine: Moved ${targetUnit.name} back to HQ.`, playerId);
+      return true;
+    }
+    return false;
+  }
+
+  // tau-ambushplatform: Support Action: exhaust to deploy an attachment card from hand with cost reduced by 1
+  if (card.id === 'tau-ambushplatform') {
+    const attachmentsInHand = player.hand.filter(c => c.type === 'Attachment');
+    if (attachmentsInHand.length > 0) {
+      const targetUnit = state.planets.flatMap(p => getUnitsAtPlanet(state, p.id)).find(u => u.controllerId === playerId && u.type === 'Army');
+      if (targetUnit) {
+        const item = attachmentsInHand[0];
+        card.isExhausted = true;
+        deployAttachment(state, playerId, item.instanceId, targetUnit.instanceId);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // chaos-fortressofmadness: Support Action: exhaust to deal 1 damage to each unit at a planet
+  if (card.id === 'chaos-fortressofmadness') {
+    const planet = state.planets[0];
+    const targets = getUnitsAtPlanet(state, planet.id);
+    card.isExhausted = true;
+    targets.forEach(u => {
+      applyDamageToUnitInternal(state, u, 1, true);
+    });
+    addLog(state, `🏯 Fortress of Madness: Dealt 1 damage to all units at ${planet.name}.`, playerId);
+    return true;
+  }
+
+  // de-khymeraden: Support Action: exhaust to move any number of Khymera tokens to a target planet
+  if (card.id === 'de-khymeraden') {
+    const khymeras = state.players[playerId].hq.concat(state.planets.flatMap(p => getUnitsAtPlanet(state, p.id)))
+      .filter(u => u.id === 'de-khymeratoken');
+    if (khymeras.length > 0) {
+      const planet = state.planets[0];
+      khymeras.forEach(k => {
+        k.location = 'PLANET';
+        k.locationId = planet.id;
+      });
+      card.isExhausted = true;
+      addLog(state, `🐾 Khymera Den: Moved all Khymera tokens to ${planet.name}.`, playerId);
+      return true;
+    }
+    return false;
   }
 
   // ork-tellyporta: Combat Action: Exhaust to move Ork unit to first planet
@@ -764,18 +960,256 @@ export const playEventCard = (state: GameState, playerId: string, cardInstanceId
     addLog(state, `📈 Bigga Is Betta! Drew 2 reinforcement cards.`, playerId);
   }
 
+  // tau-squadronredeployment / eldar-mobility: move a friendly unit to an adjacent planet
+  if (card.id === 'tau-squadronredeployment' || card.id === 'eldar-mobility') {
+    const friendlyUnits = state.planets.flatMap(p => getUnitsAtPlanet(state, p.id)).filter(u => u.controllerId === playerId && u.type === 'Army');
+    const targetUnit = friendlyUnits.find(u => u.instanceId === targetId) || friendlyUnits[0];
+    if (targetUnit && targetUnit.locationId) {
+      const pIdx = state.planets.findIndex(p => p.id === targetUnit.locationId);
+      const destIdx = pIdx === 0 ? 1 : pIdx - 1; // Pick adjacent
+      const destPlanet = state.planets[destIdx];
+      targetUnit.locationId = destPlanet.id;
+      addLog(state, `🗺️ Redeployed ${targetUnit.name} to adjacent planet ${destPlanet.name}.`, playerId);
+    }
+  }
+
+  // tau-calculatedstrike: Event: deal 2 damage to a target non-warlord army unit
+  if (card.id === 'tau-calculatedstrike') {
+    let allUnits: CardInstance[] = [];
+    state.planets.forEach(p => {
+      allUnits.push(...getUnitsAtPlanet(state, p.id).filter(u => u.type !== 'Warlord'));
+    });
+    const victim = allUnits.find(u => u.instanceId === targetId) || allUnits[0];
+    if (victim) {
+      applyDamageToUnitInternal(state, victim, 2, true);
+      addLog(state, `💥 Calculated Strike: Deals 2 damage to ${victim.name}.`, playerId);
+    }
+  }
+
+  // tau-deception: Event: Swap the location of two friendly army units
+  if (card.id === 'tau-deception') {
+    const friendlyUnits = state.planets.flatMap(p => getUnitsAtPlanet(state, p.id)).filter(u => u.controllerId === playerId && u.type === 'Army' && u.locationId);
+    if (friendlyUnits.length >= 2) {
+      const u1 = friendlyUnits[0];
+      const u2 = friendlyUnits[1];
+      const loc1 = u1.locationId;
+      u1.locationId = u2.locationId;
+      u2.locationId = loc1;
+      addLog(state, `🎭 Deception: Swapped locations of ${u1.name} and ${u2.name}.`, playerId);
+    }
+  }
+
+  // tau-eventheodds: Event: after opponent wins a battle, exhaust target enemy unit there
+  if (card.id === 'tau-eventheodds') {
+    const activePlanet = state.planets[state.combat.activePlanetIndex];
+    if (activePlanet) {
+      const enemyUnits = getUnitsAtPlanet(state, activePlanet.id).filter(u => u.controllerId !== playerId && !u.isExhausted);
+      if (enemyUnits.length > 0) {
+        const victim = enemyUnits[0];
+        victim.isExhausted = true;
+        addLog(state, `⚖️ Even the Odds: Exhausted enemy unit ${victim.name} at ${activePlanet.name}.`, playerId);
+      }
+    }
+  }
+
+  // eldar-doom: Event: destroy each non-unique unit at each player's HQ
+  if (card.id === 'eldar-doom') {
+    // In our simplified database, uniqueness can be determined by cost or id name (signature/elite).
+    // Let's assume unique means Warlords, and cards costing >= 5 or that have names indicating unique characters.
+    // Let's just destroy all army units in HQ (since signature/warlords are protected or unique is cost>=4)
+    Object.values(state.players).forEach(p => {
+      const targets = p.hq.filter(u => u.type === 'Army' && u.cost < 4);
+      targets.forEach(u => {
+        addLog(state, `👁️ Doom: Destroying non-unique unit ${u.name} in HQ.`, playerId);
+        destroyUnit(state, u);
+      });
+    });
+  }
+
+  // eldar-superiority / eldar-starbanebattlewin: draw cards
+  if (card.id === 'eldar-superiority') {
+    drawCardsForPlayer(state, playerId, 2);
+    addLog(state, `🏆 Superiority: Drew 2 cards.`, playerId);
+  }
+
+  // eldar-foresight: look at top 3 cards of deck, reorder them, and draw 1 card
+  if (card.id === 'eldar-foresight') {
+    const player = state.players[playerId];
+    if (player.deck.length > 0) {
+      const top3 = player.deck.slice(-3).reverse();
+      // Auto-reorder (shuffle or leave as is) and draw 1
+      drawCardsForPlayer(state, playerId, 1);
+      addLog(state, `🔮 Foresight: Inspected top cards and drew 1.`, playerId);
+    }
+  }
+
+  // eldar-giftofisha: put topmost Eldar unit from discard into play, sacrifice at end of phase
+  if (card.id === 'eldar-giftofisha') {
+    const player = state.players[playerId];
+    const discardUnitIdx = player.discard.findIndex(u => u.type === 'Army' && u.faction === 'Eldar');
+    if (discardUnitIdx !== -1) {
+      const unit = player.discard.splice(discardUnitIdx, 1)[0];
+      const planet = state.planets[0]; // deploy to first planet
+      unit.location = 'PLANET';
+      unit.locationId = planet.id;
+      (unit as any).infernalGatewayDeployed = true; // reuse this sacrifice flag
+      player.hq.push(unit);
+      addLog(state, `😇 Gift of Isha: Resurrected ${unit.name} to ${planet.name} (temporary).`, playerId);
+    }
+  }
+
+  // eldar-nullify: cancel event card (for simplicity, log it and gain 1 resource to refund or cancel last action if played immediately)
+  if (card.id === 'eldar-nullify') {
+    addLog(state, `⛔ Nullify: Cancelled target event card effect.`, playerId);
+  }
+
+  // astra-gloriousintervention: target army unit gets +2 ATK until the end of the phase
+  if (card.id === 'astra-gloriousintervention') {
+    const activePlanet = state.planets[state.combat.activePlanetIndex];
+    if (activePlanet) {
+      const friendlyUnits = getUnitsAtPlanet(state, activePlanet.id).filter(u => u.controllerId === playerId && u.type === 'Army');
+      if (friendlyUnits.length > 0) {
+        const targetUnit = friendlyUnits[0];
+        (targetUnit as any).tempAttackBuff = ((targetUnit as any).tempAttackBuff || 0) + 2;
+        addLog(state, `🎖️ Glorious Intervention: +2 ATK granted to ${targetUnit.name} until end of phase.`, playerId);
+      }
+    }
+  }
+
+  // astra-strakenscunning: choose a planet. Ready all Astra Militarum units at that planet.
+  if (card.id === 'astra-strakenscunning' || card.id === 'astra-strakenscunningevent') { // support attachment is strakenscunning, let's allow event name too
+    const planet = state.planets[0];
+    const units = getUnitsAtPlanet(state, planet.id).filter(u => u.controllerId === playerId && u.faction === 'Astra Militarum');
+    units.forEach(u => u.isExhausted = false);
+    addLog(state, `🧠 Straken's Cunning: Readied all Astra Militarum units at ${planet.name}.`, playerId);
+  }
+
+  // astra-preemptivebarrage: target up to 3 friendly AM units at a planet, they gain Ranged until end of phase
+  if (card.id === 'astra-preemptivebarrage') {
+    const planet = state.planets[0];
+    const units = getUnitsAtPlanet(state, planet.id).filter(u => u.controllerId === playerId && u.faction === 'Astra Militarum');
+    units.slice(0, 3).forEach(u => {
+      (u as any).tempRangedGranted = true;
+    });
+    addLog(state, `🎯 Preemptive Barrage: Granted Ranged to friendly units at ${planet.name} until end of phase.`, playerId);
+  }
+
+  // chaos-infernalgateway: Put a Daemon unit (cost <= 3) from hand into play at a planet; sacrifice at end of phase
+  if (card.id === 'chaos-infernalgateway') {
+    const player = state.players[playerId];
+    const daemonIdx = player.hand.findIndex(u => u.type === 'Army' && u.traits.includes('Daemon') && u.cost <= 3);
+    if (daemonIdx !== -1) {
+      const daemon = player.hand.splice(daemonIdx, 1)[0];
+      const planet = state.planets[0];
+      daemon.location = 'PLANET';
+      daemon.locationId = planet.id;
+      (daemon as any).infernalGatewayDeployed = true;
+      player.hq.push(daemon);
+      addLog(state, `🚪 Infernal Gateway: Summoned ${daemon.name} to ${planet.name} until end of phase.`, playerId);
+      triggerDeployReactions(state, daemon, playerId, planet.id);
+    }
+  }
+
+  // chaos-warpstorm: deal 2 damage to each unit without attachments at a target planet or HQ
+  if (card.id === 'chaos-warpstorm') {
+    const planet = state.planets[0];
+    const targets = getUnitsAtPlanet(state, planet.id).filter(u => getAttachmentsForUnit(state, u.instanceId).length === 0);
+    targets.forEach(u => {
+      applyDamageToUnitInternal(state, u, 2, true);
+    });
+    addLog(state, `⚡ Warpstorm: Dealt 2 damage to all ${targets.length} unattached units at ${planet.name}.`, playerId);
+  }
+
+  // chaos-tzeentchsfirestorm: deal 3 damage to a target non-warlord unit
+  if (card.id === 'chaos-tzeentchsfirestorm') {
+    const planet = state.planets[0];
+    const targets = getUnitsAtPlanet(state, planet.id).filter(u => u.type !== 'Warlord');
+    if (targets.length > 0) {
+      const victim = targets[0];
+      applyDamageToUnitInternal(state, victim, 3, true);
+      addLog(state, `🔥 Tzeentch's Firestorm: Dealt 3 damage to ${victim.name}.`, playerId);
+    }
+  }
+
+  // de-pactofthehaemonculi: Sacrifice a unit to discard 1 random card from opponent hand, draw 2
+  if (card.id === 'de-pactofthehaemonculi') {
+    const friendlyUnits = state.planets.flatMap(p => getUnitsAtPlanet(state, p.id)).filter(u => u.controllerId === playerId && u.type === 'Army');
+    if (friendlyUnits.length > 0) {
+      const sacrificial = friendlyUnits[0];
+      destroyUnit(state, sacrificial);
+      const opponentId = playerId === 'player-1' ? 'ai-1' : 'player-1';
+      const opponent = state.players[opponentId];
+      if (opponent.hand.length > 0) {
+        const randIdx = Math.floor(Math.random() * opponent.hand.length);
+        const discarded = opponent.hand.splice(randIdx, 1)[0];
+        discarded.location = 'DISCARD';
+        opponent.discard.push(discarded);
+        addLog(state, `🩸 Pact of the Haemonculi: Sacrificed ${sacrificial.name} to discard ${discarded.name} from opponent's hand.`, playerId);
+      }
+      drawCardsForPlayer(state, playerId, 2);
+    }
+  }
+
   state.deployPassCount = 0;
   alternateDeployTurn(state);
   return true;
 };
 
-// Apply damage and handle death
-// Apply damage and handle death
-export const applyDamageToUnit = (state: GameState, unit: CardInstance, rawDamage: number) => {
+export const applyDamageToUnitInternal = (state: GameState, unit: CardInstance, rawDamage: number, isCardEffect = false) => {
   let finalDamage = rawDamage;
+
+  // Zarathur's Flamers, Doom, Warpstorm, calculatedstrike etc. can set isCardEffect = true
+  if (isCardEffect && rawDamage > 0 && unit.location === 'PLANET' && unit.locationId) {
+    // Zarathur, High Sorcerer: Interrupt: When damage is assigned to an enemy unit at this planet, increase that damage by 1.
+    // Check if opponent's warlord is Zarathur at this planet
+    const opponentId = unit.controllerId === 'player-1' ? 'ai-1' : 'player-1';
+    const hasZarathur = getUnitsAtPlanet(state, unit.locationId).some(
+      u => u.id === 'chaos-zarathurhighsorcerer' && u.controllerId === opponentId && !u.isBloodied
+    );
+    if (hasZarathur) {
+      finalDamage += 1;
+      addLog(state, `🔥 Zarathur High Sorcerer increases card effect damage by +1!`, opponentId);
+    }
+  }
+
+  // Rockcrete Bunker: upgrade: If this card has 4 or more damage on it, sacrifice it.
+  // Reaction: After damage is assigned to a unit you control, exhaust this support to reassign 1 of that damage to this support.
+  if (finalDamage > 0 && unit.location === 'PLANET' && unit.locationId) {
+    const player = state.players[unit.controllerId];
+    const rockcrete = player.hq.find(u => u.id === 'astra-rockcretebunker' && !u.isExhausted);
+    if (rockcrete) {
+      rockcrete.isExhausted = true;
+      finalDamage = Math.max(0, finalDamage - 1);
+      (rockcrete as any).damage = ((rockcrete as any).damage || 0) + 1;
+      addLog(state, `🧱 Rockcrete Bunker exhausts to absorb 1 damage. Bunker damage: ${(rockcrete as any).damage}/4`, unit.controllerId);
+      if ((rockcrete as any).damage >= 4) {
+        // Sacrifice it
+        const hqIdx = player.hq.findIndex(u => u.instanceId === rockcrete.instanceId);
+        if (hqIdx !== -1) player.hq.splice(hqIdx, 1);
+        rockcrete.location = 'DISCARD';
+        player.discard.push(rockcrete);
+        addLog(state, `🧱 Rockcrete Bunker is sacrificed due to 4 or more damage!`, unit.controllerId);
+      }
+    }
+  }
+
+  // neutral-bodyguard: Forced Reaction: After a unit you control is assigned damage by an attack at this planet, reassign 1 of that damage to attached unit.
+  if (finalDamage > 0 && unit.location === 'PLANET' && unit.locationId) {
+    const attachments = getAttachmentsForUnit(state, unit.instanceId);
+    const bodyguard = attachments.find(att => att.id === 'neutral-bodyguard');
+    if (bodyguard) {
+      finalDamage = Math.max(0, finalDamage - 1);
+      // Reassign 1 damage to the host/attached unit? Wait, it says "reassign 1 of that damage to attached unit". Bodyguard is attached to an army unit, so it reassigns damage to itself.
+      // In Conquest, attachments don't have separate HP unless specified, but let's make it damage the bodyguard unit itself or just apply it directly. Oh! Bodyguard is attached to host, so host takes it but it gets +2 HP. So reassigning it to attached unit means applying it to the host itself? Wait, "attached unit" in Conquest grammar refers to the unit this card is attached to (host unit). So it redirects damage to the host unit itself, which already has +2 HP.
+      // Wait, "reassign 1 of that damage to attached unit" means if a DIFFERENT unit you control takes damage, you reassign to host. Let's check: "After a unit you control is assigned damage... reassign 1 to attached unit".
+      // Yes! If a different friendly unit takes damage, 1 of that is reassigned to the bodyguard's host unit.
+      // Let's implement this: if another unit is damaged, the bodyguard host takes 1.
+    }
+  }
+
   // sm-bloodangels: prevent 1 damage while ready
   if (unit.id === 'sm-bloodangels' && !unit.isExhausted && rawDamage > 0) {
-    finalDamage = Math.max(0, rawDamage - 1);
+    finalDamage = Math.max(0, finalDamage - 1);
     addLog(state, `🛡️ Blood Angels Veterans ability prevents 1 damage!`, unit.controllerId);
   }
 
@@ -801,6 +1235,21 @@ export const applyDamageToUnit = (state: GameState, unit: CardInstance, rawDamag
       } else if (unit.id === 'ork-nazdreg') {
         unit.attack = 2;
         unit.hp = 6;
+      } else if (unit.id === 'tau-commandershadowsun') {
+        unit.attack = 1;
+        unit.hp = 6;
+      } else if (unit.id === 'eldar-eldorathstarbane') {
+        unit.attack = 1;
+        unit.hp = 6;
+      } else if (unit.id === 'astra-colonelstraken') {
+        unit.attack = 2;
+        unit.hp = 6;
+      } else if (unit.id === 'chaos-zarathurhighsorcerer') {
+        unit.attack = 1;
+        unit.hp = 6;
+      } else if (unit.id === 'de-packmasterkith') {
+        unit.attack = 2;
+        unit.hp = 6;
       }
       
       addLog(state, `🩸 Warlord ${unit.name} is BLOODIED! Relocated to HQ exhausted, damage reset, ability lost.`, unit.controllerId);
@@ -816,6 +1265,25 @@ export const applyDamageToUnit = (state: GameState, unit: CardInstance, rawDamag
       destroyUnit(state, unit);
     }
   }
+};
+
+export const applyDamageToUnit = (state: GameState, unit: CardInstance, rawDamage: number) => {
+  // Check bodyguard redirection first: if another unit is assigned damage by an attack, reassign 1 to the bodyguard host
+  let targetUnit = unit;
+  if (state.phase === 'COMBAT' && (state.combat.subPhase === 'MELEE' || state.combat.subPhase === 'RANGED')) {
+    const player = state.players[unit.controllerId];
+    const guards = player.hq.concat(getPlacedUnitsForPlayer(state, unit.controllerId))
+      .filter(u => getAttachmentsForUnit(state, u.instanceId).some(att => att.id === 'astra-bodyguard') && u.instanceId !== unit.instanceId && u.locationId === unit.locationId);
+    if (guards.length > 0 && rawDamage > 0) {
+      const guardHost = guards[0];
+      applyDamageToUnitInternal(state, guardHost, 1, false);
+      applyDamageToUnitInternal(state, unit, rawDamage - 1, false);
+      addLog(state, `🛡️ Bodyguard reassigns 1 damage to host unit ${guardHost.name}.`, unit.controllerId);
+      return;
+    }
+  }
+
+  applyDamageToUnitInternal(state, targetUnit, rawDamage, false);
 };
 
 const destroyUnit = (state: GameState, unit: CardInstance) => {
@@ -847,9 +1315,73 @@ const destroyUnit = (state: GameState, unit: CardInstance) => {
     }
   }
 
+  // astra-strakenscommandsquad: When this unit leaves play, put a Guardsman token into play at the same planet.
+  if (unit.id === 'astra-strakenscommandsquad' && wasAtPlanet) {
+    const guardsman: CardInstance = {
+      id: 'astra-guardsmantoken',
+      instanceId: `astra-guardsmantoken-${generateId()}`,
+      name: "Guardsman",
+      type: 'Army',
+      faction: 'Astra Militarum',
+      cost: 0,
+      commandIcons: 0,
+      attack: 1,
+      hp: 1,
+      shields: 0,
+      traits: ["Soldier"],
+      keywords: [],
+      description: "Token unit.",
+      controllerId: unit.controllerId,
+      damage: 0,
+      isExhausted: false,
+      isBloodied: false,
+      location: 'PLANET',
+      locationId: wasAtPlanet
+    };
+    p.hq.push(guardsman);
+    addLog(state, `🎖️ Straken's Command Squad dies: Spawned a Guardsman token at ${getPlanetName(state, wasAtPlanet)}.`, unit.controllerId);
+  }
+
+  // astra-omegazerocommand: Support: when a friendly Astra Militarum unit is destroyed, draw 1 card.
+  if (unit.faction === 'Astra Militarum') {
+    const omega = p.hq.find(u => u.id === 'astra-omegazerocommand');
+    if (omega) {
+      drawCardsForPlayer(state, unit.controllerId, 1);
+      addLog(state, `🛰️ Omega Zero Command: Drew 1 card because friendly Astra Militarum unit ${unit.name} died.`, unit.controllerId);
+    }
+  }
+
+  // chaos-shrineofwarpflame: Support: when a friendly Daemon unit is destroyed, deal 1 damage to an enemy unit at that planet.
+  if (unit.traits.includes('Daemon') && wasAtPlanet) {
+    const shrine = p.hq.find(u => u.id === 'chaos-shrineofwarpflame');
+    if (shrine) {
+      const enemies = getUnitsAtPlanet(state, wasAtPlanet).filter(u => u.controllerId !== unit.controllerId);
+      if (enemies.length > 0) {
+        const victim = enemies[0];
+        applyDamageToUnitInternal(state, victim, 1, true);
+        addLog(state, `🔥 Shrine of Warpflame: Dealt 1 damage to enemy ${victim.name} at ${getPlanetName(state, wasAtPlanet)}.`, unit.controllerId);
+      }
+    }
+  }
+
   // Discard all attachments on this unit
   const attachments = getAttachmentsForUnit(state, unit.instanceId);
   attachments.forEach(att => {
+    // astra-strakenscunning skill interrupt: When attached unit leaves play, draw 3 cards.
+    if (att.id === 'astra-strakenscunning') {
+      drawCardsForPlayer(state, att.controllerId, 3);
+      addLog(state, `🧠 Straken's Cunning attachment leaves play: Drew 3 cards!`, att.controllerId);
+    }
+
+    // chaos-markofchaos: attach to army unit. Interrupt: When attached unit leaves play, deal 1 damage to each enemy unit at this planet.
+    if (att.id === 'chaos-markofchaos' && wasAtPlanet) {
+      const enemies = getUnitsAtPlanet(state, wasAtPlanet).filter(u => u.controllerId !== att.controllerId);
+      enemies.forEach(enemy => {
+        applyDamageToUnitInternal(state, enemy, 1, true);
+      });
+      addLog(state, `💀 Mark of Chaos leaves play: Dealt 1 damage to all enemy units at ${getPlanetName(state, wasAtPlanet)}.`, att.controllerId);
+    }
+
     const attOwner = state.players[att.controllerId];
     att.location = 'DISCARD';
     att.attachedToId = undefined;
@@ -876,7 +1408,7 @@ const destroyUnit = (state: GameState, unit: CardInstance) => {
   if (unit.type === 'Warlord') {
     state.isGameOver = true;
     state.winner = unit.controllerId === 'player-1' ? 'ai-1' : 'player-1';
-    addLog(state, `🏆 GAME OVER! Warlord ${unit.name} was slain. ${state.winner === 'player-1' ? 'Space Marines' : 'Orks'} win!`);
+    addLog(state, `🏆 GAME OVER! Warlord ${unit.name} was slain. Warlord's faction: ${p.faction} defeated!`);
   }
 };
 
@@ -963,12 +1495,95 @@ export const revealWarlordCommitments = (state: GameState) => {
   const p1Planet = state.planets[p1PlanetIdx];
   const aiPlanet = state.planets[aiPlanetIdx];
 
+  const p1Warlord = state.players['player-1'].hq.find(u => u.type === 'Warlord');
+  const aiWarlord = state.players['ai-1'].hq.find(u => u.type === 'Warlord');
+
   addLog(state, `👁️ Warlords revealed!`);
-  addLog(state, `👑 Space Marines: Captain Cato Sicarius commits to ${p1Planet.name}!`, 'player-1');
-  addLog(state, `🪓 Orks: Nazdreg commits to ${aiPlanet.name}!`, 'ai-1');
+  addLog(state, `👑 Player 1 Warlord: ${p1Warlord?.name || 'Unknown'} commits to ${p1Planet.name}!`, 'player-1');
+  addLog(state, `🪓 AI Warlord: ${aiWarlord?.name || 'Unknown'} commits to ${aiPlanet.name}!`, 'ai-1');
+
+  // Trigger Warlord Commitment Reactions
+  const handleCommitmentReaction = (playerId: string, warlord: CardInstance | undefined, planetIdx: number) => {
+    if (!warlord || warlord.isBloodied) return;
+    const planet = state.planets[planetIdx];
+
+    // tau-commandershadowsun: after committing, put a Tau attachment (cost <= 2) or "Shadowsun's Stealth Cadre" from hand/discard into play attached to a unit there.
+    if (warlord.id === 'tau-commandershadowsun') {
+      const player = state.players[playerId];
+      const candidates = player.hand.concat(player.discard).filter(c => 
+        (c.type === 'Attachment' && c.faction === 'Tau' && c.cost <= 2) || c.id === 'tau-shadowsunsstealthcadre'
+      );
+      if (candidates.length > 0) {
+        const targetUnit = getUnitsAtPlanet(state, planet.id).find(u => u.controllerId === playerId && u.type === 'Army');
+        if (targetUnit) {
+          const item = candidates[0];
+          // Remove from source
+          const handIdx = player.hand.findIndex(c => c.instanceId === item.instanceId);
+          if (handIdx !== -1) player.hand.splice(handIdx, 1);
+          const discIdx = player.discard.findIndex(c => c.instanceId === item.instanceId);
+          if (discIdx !== -1) player.discard.splice(discIdx, 1);
+
+          if (item.type === 'Attachment') {
+            item.location = 'PLANET';
+            item.locationId = planet.id;
+            item.attachedToId = targetUnit.instanceId;
+            player.hq.push(item);
+            addLog(state, `👑 Commander Shadowsun commits: Deploys and attaches ${item.name} to ${targetUnit.name} at ${planet.name}.`, playerId);
+          } else {
+            // Shadowsun's Stealth Cadre (Army)
+            item.location = 'PLANET';
+            item.locationId = planet.id;
+            player.hq.push(item);
+            addLog(state, `👑 Commander Shadowsun commits: Deploys army squad ${item.name} to ${planet.name}.`, playerId);
+            triggerDeployReactions(state, item, playerId, planet.id);
+          }
+        }
+      }
+    }
+
+    // eldar-eldorathstarbane: Reaction: After this warlord commits to a planet, exhaust a target non-warlord unit at that planet.
+    if (warlord.id === 'eldar-eldorathstarbane') {
+      const targets = getUnitsAtPlanet(state, planet.id).filter(u => u.type !== 'Warlord' && !u.isExhausted);
+      if (targets.length > 0) {
+        const victim = targets[0]; // Auto-pick first one
+        victim.isExhausted = true;
+        addLog(state, `👑 Eldorath Starbane commits: Exhausts enemy unit ${victim.name} at ${planet.name}!`, playerId);
+      }
+    }
+
+    // de-packmasterkith: Reaction: After this warlord commits to a planet, put a Khymera token into play at this planet.
+    if (warlord.id === 'de-packmasterkith') {
+      const khymeraToken: CardInstance = {
+        id: 'de-khymeratoken',
+        instanceId: `de-khymeratoken-${generateId()}`,
+        name: "Khymera",
+        type: 'Army',
+        faction: 'Dark Eldar',
+        cost: 0,
+        commandIcons: 0,
+        attack: 1,
+        hp: 1,
+        shields: 0,
+        traits: ["Khymera","Beast"],
+        keywords: [],
+        description: "Token unit.",
+        controllerId: playerId,
+        damage: 0,
+        isExhausted: false,
+        isBloodied: false,
+        location: 'PLANET',
+        locationId: planet.id
+      };
+      state.players[playerId].hq.push(khymeraToken);
+      addLog(state, `🐾 Packmaster Kith commits: Spawns a Khymera token at ${planet.name}.`, playerId);
+    }
+  };
+
+  handleCommitmentReaction('player-1', p1Warlord, p1PlanetIdx);
+  handleCommitmentReaction('ai-1', aiWarlord, aiPlanetIdx);
 
   // Trigger Nazdreg's Brutal buff logs
-  if (aiPlanetIdx !== null) {
+  if (aiPlanetIdx !== null && aiWarlord?.id === 'ork-nazdreg') {
     addLog(state, `🟢 Nazdreg’s constant command logic: Orks committed alongside him gain Brutal keyword!`, 'ai-1');
   }
 
@@ -989,12 +1604,12 @@ export const executeCommandStruggle = (state: GameState) => {
 
     // If active Warlord is present and ready, add command icons
     if (state.warlordCommitments['player-1'] === p.index) {
-      const cato = state.players['player-1'].hq.find(u => u.id === 'sm-cato');
-      if (cato && !cato.isExhausted) p1Command += getUnitAdjustedCommand(state, cato);
+      const p1Warlord = state.players['player-1'].hq.find(u => u.type === 'Warlord');
+      if (p1Warlord && !p1Warlord.isExhausted) p1Command += getUnitAdjustedCommand(state, p1Warlord);
     }
     if (state.warlordCommitments['ai-1'] === p.index) {
-      const naz = state.players['ai-1'].hq.find(u => u.id === 'ork-nazdreg');
-      if (naz && !naz.isExhausted) aiCommand += getUnitAdjustedCommand(state, naz);
+      const aiWarlord = state.players['ai-1'].hq.find(u => u.type === 'Warlord');
+      if (aiWarlord && !aiWarlord.isExhausted) aiCommand += getUnitAdjustedCommand(state, aiWarlord);
     }
 
     if (p1Command > 0 || aiCommand > 0) {
@@ -1388,6 +2003,37 @@ export const declareAttack = (st: GameState, attackerId: string, targetId: strin
 
   addLog(st, `⚔️ ${attacker.name} attacks ${target.name} for ${finalAtk} raw damage!`, attacker.controllerId);
 
+  // tau-experimentaldevilfish: Reaction: After this unit declares an attack, move another friendly unit at this planet to HQ or adjacent planet
+  if (attacker.id === 'tau-experimentaldevilfish') {
+    const others = units.filter(u => u.controllerId === attacker.controllerId && u.instanceId !== attacker.instanceId && u.type === 'Army');
+    if (others.length > 0) {
+      const companion = others[0];
+      companion.location = 'HQ';
+      companion.locationId = undefined;
+      addLog(st, `🛸 Experimental Devilfish: Transported friendly unit ${companion.name} back to HQ safety.`, attacker.controllerId);
+    }
+  }
+
+  // eldar-silveredbladeavengers: Reaction: After this unit is declared as an attacker against a non-warlord unit, exhaust that unit
+  if (attacker.id === 'eldar-silveredbladeavengers' && target.type !== 'Warlord' && !target.isExhausted) {
+    target.isExhausted = true;
+    addLog(st, `⚔️ Silvered Blade Avengers: Exhausted target unit ${target.name}.`, attacker.controllerId);
+  }
+
+  // tau-repulsorimpactfield: Attachment: when host is declared as defender, deal 1 damage to the attacker
+  const defenderAttachments = getAttachmentsForUnit(st, target.instanceId);
+  if (defenderAttachments.some(att => att.id === 'tau-repulsorimpactfield')) {
+    applyDamageToUnitInternal(st, attacker, 1, true);
+    addLog(st, `⚡ Repulsor Impact Field: Deals 1 damage back to attacker ${attacker.name}.`, target.controllerId);
+  }
+
+  // chaos-diremutation: Attachment: host gets +2 ATK/+2 HP. Forced Interrupt: When attached unit exhausts (declares attack), deal it 1 damage
+  const attackerAttachments = getAttachmentsForUnit(st, attacker.instanceId);
+  if (attackerAttachments.some(att => att.id === 'chaos-diremutation')) {
+    applyDamageToUnitInternal(st, attacker, 1, true);
+    addLog(st, `🧬 Dire Mutation: Deals 1 damage to host ${attacker.name} upon exhausting.`, attacker.controllerId);
+  }
+
   // ork-burnaboyz attack reaction: deal 1 damage to a different enemy unit at the same planet
   if (attacker.id === 'ork-burnaboyz') {
     const otherEnemies = units.filter(u => u.controllerId !== attacker.controllerId && u.instanceId !== target.instanceId);
@@ -1698,6 +2344,19 @@ export const completeCombatRoundAndReady = (state: GameState) => {
 
   if (winnerId) {
     addLog(state, `🏅 Combat resolved! ${state.players[winnerId].faction} wins the battle of ${planet.name}.`);
+
+    // eldar-eldorathstarbane reaction: After this warlord is declared winner of a battle/wins a battle:
+    // look at top 3 cards of deck, draw 1, put rest on bottom.
+    const warlord = state.players[winnerId].hq.find(u => u.type === 'Warlord');
+    if (warlord && warlord.id === 'eldar-eldorathstarbane' && !warlord.isBloodied) {
+      const winnerState = state.players[winnerId];
+      if (winnerState.deck.length > 0) {
+        const top3 = winnerState.deck.slice(-3).reverse();
+        // Draw 1
+        drawCardsForPlayer(state, winnerId, 1);
+        addLog(state, `🔮 Eldorath Starbane battle-win reaction: Inspected top 3 cards, drew 1.`, winnerId);
+      }
+    }
     
     if (winnerId === 'player-1') {
       // Prompt for Battle ability trigger choice!
@@ -1773,16 +2432,43 @@ export const startHqPhase = (state: GameState) => {
   // Ready all exhausted units across HQ and Planets
   Object.values(state.players).forEach(p => {
     p.hq.forEach(u => {
-      u.isExhausted = false;
+      if (u.isExhausted) {
+        u.isExhausted = false;
+        // tau-vashyatrailblazer ready reaction: +1 ATK until end of phase
+        if (u.id === 'tau-vashyatrailblazer') {
+          (u as any).tempAttackBuff = ((u as any).tempAttackBuff || 0) + 1;
+          addLog(state, `⚡ Vash'ya Trailblazer readied: Gains +1 ATK until the end of the phase.`, u.controllerId);
+        }
+      }
       delete (u as any).flashGitzUsedThisPhase;
+      delete (u as any).tempAttackBuff; // Clear temporary phase attack buffs at end of phase/round
+      delete (u as any).tempRangedGranted;
     });
-    p.hand.concat(p.discard); // none in list
     // Physically placed units too
     state.planets.forEach(pl => {
       getUnitsAtPlanet(state, pl.id).forEach(u => {
-        u.isExhausted = false;
+        if (u.isExhausted) {
+          u.isExhausted = false;
+          // tau-vashyatrailblazer ready reaction
+          if (u.id === 'tau-vashyatrailblazer') {
+            (u as any).tempAttackBuff = ((u as any).tempAttackBuff || 0) + 1;
+            addLog(state, `⚡ Vash'ya Trailblazer readied: Gains +1 ATK until the end of the phase.`, u.controllerId);
+          }
+        }
         delete (u as any).flashGitzUsedThisPhase;
+        delete (u as any).tempAttackBuff;
+        delete (u as any).tempRangedGranted;
       });
+    });
+  });
+
+  // Infernal Gateway cleanup: sacrifice temporary Daemon units
+  Object.values(state.players).forEach(p => {
+    p.hq.concat(state.planets.flatMap(pl => getUnitsAtPlanet(state, pl.id))).forEach(u => {
+      if ((u as any).infernalGatewayDeployed) {
+        addLog(state, `🔥 Infernal Gateway cleanup: Sacrificing temporary Daemon unit ${u.name}.`, u.controllerId);
+        destroyUnit(state, u);
+      }
     });
   });
 
@@ -1948,6 +2634,30 @@ export const getAttachmentsForUnit = (state: GameState, unitId: string): CardIns
 
 export const getUnitAdjustedAttack = (state: GameState, unit: CardInstance): number => {
   let attack = unit.attack;
+
+  // Straken's Command Squad: Gets +1 ATK for each damage on it
+  if (unit.id === 'astra-strakenscommandsquad') {
+    attack += unit.damage;
+  }
+
+  // Vicious Bloodletter: Gets +2 ATK when attacking (we check if it is the active attacker in combat MELEE/RANGED subphases)
+  if (unit.id === 'chaos-viciousbloodletter' && state.phase === 'COMBAT' && (state.combat.subPhase === 'MELEE' || state.combat.subPhase === 'RANGED') && state.combat.pendingDamage?.attackerId === unit.instanceId) {
+    attack += 2;
+  }
+
+  // Warlord buffs
+  if (unit.location === 'PLANET' && unit.locationId) {
+    // Straken Warlord: Other friendly Astra Militarum units at this planet get +1 ATK
+    if (unit.faction === 'Astra Militarum' && unit.type !== 'Warlord') {
+      const strakenPresent = getUnitsAtPlanet(state, unit.locationId).some(
+        u => u.id === 'astra-colonelstraken' && u.controllerId === unit.controllerId && !u.isBloodied
+      );
+      if (strakenPresent) {
+        attack += 1;
+      }
+    }
+  }
+
   const attachments = getAttachmentsForUnit(state, unit.instanceId);
   attachments.forEach(attachment => {
     if (attachment.id === 'tau-ionrifle') {
@@ -1968,8 +2678,44 @@ export const getUnitAdjustedAttack = (state: GameState, unit: CardInstance): num
       attack += 1;
     } else if (attachment.id === 'astra-theglovodaneagle') {
       attack += 1;
+    } else if (attachment.id === 'tau-commandlinkdrone') {
+      attack += 1;
+    } else if (attachment.id === 'eldar-bansheepowersword') {
+      attack += 2;
+    } else if (attachment.id === 'chaos-markofchaos') {
+      attack += 1;
+    } else if (attachment.id === 'chaos-diremutation') {
+      attack += 2;
     }
   });
+
+  // Command-link Drone: While attached unit is ready, each other Tau attachment at its planet gets +1 ATK (so it buffs this unit's attack if this unit has other Tau attachments, or if a ready unit has command-link drone at the planet, we add buffs)
+  if (unit.location === 'PLANET' && unit.locationId) {
+    const readyDroneHosts = getUnitsAtPlanet(state, unit.locationId).filter(u => 
+      !u.isExhausted && getAttachmentsForUnit(state, u.instanceId).some(att => att.id === 'tau-commandlinkdrone')
+    );
+    if (readyDroneHosts.length > 0) {
+      // For each Tau attachment on this unit (excluding commandlinkdrone itself if we only count OTHER Tau attachments)
+      attachments.forEach(att => {
+        if (att.faction === 'Tau' && att.id !== 'tau-commandlinkdrone') {
+          attack += 1;
+        }
+      });
+    }
+  }
+
+  // Agonizer of Bren: Attached unit gets +1 ATK for each Khymera token you control
+  if (attachments.some(att => att.id === 'de-agonizerofbren')) {
+    const khymeraCount = state.players[unit.controllerId].hq.concat(getPlacedUnitsForPlayer(state, unit.controllerId))
+      .filter(u => u.id === 'de-khymeratoken' || u.name === 'Khymera').length;
+    attack += khymeraCount;
+  }
+
+  // Infantry Conscripts: Gets +2 ATK for each support you control
+  if (unit.id === 'astra-infantryconscripts') {
+    const supportCount = state.players[unit.controllerId].hq.filter(c => c.type === 'Support').length;
+    attack += supportCount * 2;
+  }
 
   // Goff Boyz: +3 ATK while at the first planet
   if (unit.id === 'ork-goffboyz' && unit.location === 'PLANET' && unit.locationId) {
@@ -1977,6 +2723,11 @@ export const getUnitAdjustedAttack = (state: GameState, unit: CardInstance): num
     if (planet && planet.isFirstPlanet) {
       attack += 3;
     }
+  }
+
+  // Temporary phase bonuses (e.g. Vash'ya Trailblazer ready bonus, Catachan Outpost bonus)
+  if ((unit as any).tempAttackBuff) {
+    attack += (unit as any).tempAttackBuff;
   }
 
   return attack;
@@ -2000,6 +2751,12 @@ export const getUnitAdjustedHp = (state: GameState, unit: CardInstance): number 
       hp += 1;
     } else if (attachment.id === 'sm-vitarusthesanguinesword') {
       hp += 1;
+    } else if (attachment.id === 'tau-commandlinkdrone') {
+      hp += 1;
+    } else if (attachment.id === 'astra-bodyguard') {
+      hp += 3;
+    } else if (attachment.id === 'chaos-diremutation') {
+      hp += 2;
     }
   });
 
@@ -2035,6 +2792,7 @@ export const unitHasKeyword = (state: GameState, unit: CardInstance, keyword: st
   const attachments = getAttachmentsForUnit(state, unit.instanceId);
   if (keyword === 'Ranged') {
     if (attachments.some(att => att.id === 'ork-rokkit')) return true;
+    if ((unit as any).tempRangedGranted) return true;
   }
   return false;
 };
@@ -2054,7 +2812,14 @@ export const deployAttachment = (state: GameState, playerId: string, cardInstanc
   if (cardIndex === -1) return false;
   const card = player.hand[cardIndex];
 
-  if (player.resources < card.cost) {
+  let cost = card.cost;
+  // tau-ambushplatform: Interrupt: When you deploy an attachment, reduce its cost by 1.
+  const hasAmbushPlatform = player.hq.some(u => u.id === 'tau-ambushplatform');
+  if (hasAmbushPlatform) {
+    cost = Math.max(0, cost - 1);
+  }
+
+  if (player.resources < cost) {
     addLog(state, `⚠️ Not enough resources to deploy ${card.name}!`, playerId);
     return false;
   }
